@@ -86,7 +86,7 @@ function mockFetch({ rows, openai }) {
       if (!openai) return new Response('nope', { status: 500 });
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(openai) } }] }));
     }
-    if (url.endsWith('/rpc/search_events')) return new Response(JSON.stringify(typeof rows === 'function' ? rows(body.params) : rows));
+    if (url.endsWith('/rpc/search_events_v2')) return new Response(JSON.stringify(typeof rows === 'function' ? rows(body.params) : rows));
     if (url.endsWith('/rpc/log_search')) return new Response(JSON.stringify(body.id));
     return new Response('null');
   };
@@ -135,4 +135,26 @@ test('dedupe matches on the local day and prefers the copy with a start time', (
     { key: 'other', title: 'Garbage /// Zócalo Capitalino', starts_at: '2026-11-15T02:00:00+00:00', all_day: false, timezone: tz, occurrence_kind: 'run' },
   ];
   assert.deepEqual(dedupe(rows).map((r) => r.key), ['timed']);
+});
+
+test('tag filters that match nothing are dropped and named', async () => {
+  const fetchImpl = mockFetch({ rows: (p) => (p.kids ? [] : [row('x', 'top')]), openai: null });
+  const r = await search({ q: 'kids stuff' }, { env: ENV, meta: META, now: NOW, fetchImpl });
+  assert.equal(r.filters.kids, true);
+  assert.equal(r.relaxed, true);
+  assert.deepEqual(r.relaxed_by, ['kid-friendly']);
+  assert.ok(r.chips.some((c) => c.label === 'Kid-friendly'));
+});
+
+test('keyword fallback: a named weekday is that day only; next week is Monday to Sunday; museum is a venue type', () => {
+  const now = new Date('2026-11-11T23:50:00Z'); // Wed 11 Nov, 17:50 in CDMX
+  const meta = { profiles: [], cities: [{ slug: 'cdmx' }] };
+  const a = parseKeywords('museum activities on sunday', { meta, tz: 'America/Mexico_City', now });
+  assert.equal(a.from, '2026-11-15T00:00'); assert.equal(a.to, '2026-11-15T23:59');
+  assert.deepEqual(a.venue_types, ['museum']); assert.deepEqual(a.categories, []);
+  const b = parseKeywords('child-friendly events next week', { meta, tz: 'America/Mexico_City', now });
+  assert.equal(b.from, '2026-11-16T00:00'); assert.equal(b.to, '2026-11-22T23:59');
+  assert.equal(b.kids, true); assert.equal(b.text, null);
+  const c = parseKeywords('outdoor activities this weekend', { meta, tz: 'America/Mexico_City', now });
+  assert.equal(c.outdoor, true); assert.equal(c.from, '2026-11-13T18:00');
 });

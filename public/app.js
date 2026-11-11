@@ -215,8 +215,10 @@ function removeChip(field, value) {
   const f = { ...state.data.filters };
   if (field === 'when') { f.from = null; f.to = null; }
   else if (field === 'category') f.categories = (f.categories || []).filter((c) => c !== value);
-  else if (field === 'free') f.free = false;
+  else if (Array.isArray(f[field])) f[field] = f[field].filter((c) => c !== value);
+  else if (typeof f[field] === 'boolean') f[field] = false;
   else f[field] = null;
+  if (field === 'text') f.topic = null;
   runSearch({ q: $('#q-results').value, filters: f });
 }
 
@@ -244,17 +246,25 @@ function renderResults() {
   }
   const shownOngoing = state.ongoingOpen ? ongoing : ongoing.slice(0, 4);
   let html = `<div class="count"><span><b>${list.length}</b> event${list.length === 1 ? '' : 's'}</span></div>`;
-  if (d.relaxed) html += `<p class="note">Nothing matched those words exactly, so here's everything else for those dates.</p>`;
-  if (d.expanded) html += `<p class="note">Not much has been picked for this yet, so here's everything we found.</p>`;
+  if (d.relaxed) {
+    const what = (d.relaxed_by || []).length ? listWords(d.relaxed_by) : 'matched those words';
+    html += `<p class="note">Nothing ${esc(what)} ${d.when_label ? `for ${esc(d.when_label.toLowerCase().startsWith('tonight') ? 'tonight' : d.when_label)}` : 'yet'}, so here's everything else for those dates.</p>`;
+  } else if (d.expanded) html += `<p class="note">Not much has been picked for this yet, so here's everything we found.</p>`;
+  // Dated events first; long-running exhibitions after them, unless they're all there is.
+  for (const day of days) html += section(dayLabel(day.items[0]), day.items, '');
   if (ongoing.length) {
-    html += section('Ongoing', shownOngoing, '');
+    html += section(days.length ? 'Also on' : 'Ongoing', shownOngoing, '');
     if (ongoing.length > 4 && !state.ongoingOpen) html += `<button class="toggle" type="button" id="ongoing-more">Show ${ongoing.length - 4} more ongoing</button>`;
   }
-  for (const day of days) html += section(dayLabel(day.items[0]), day.items, '');
   if (!state.showMore && d.more.length) html += `<button class="more-btn" type="button" id="more-btn">Show ${d.more.length} more</button>`;
   html += `<p class="foot">Not quite it? Try “cheaper”, “closer to Roma” or “just Sunday”.${d.updated_at ? `<br>Events updated ${esc(fmt(d.updated_at, d.timezone, { day: 'numeric', month: 'short' }))}.` : ''}</p>`;
   $('#result-list').innerHTML = html;
-  if (desktop.matches && list.length) openDetail(state.selected && findEvent(state.selected) ? state.selected : list[0].key, { quiet: true });
+  const first = dated[0] || ongoing[0];
+  if (desktop.matches && first) openDetail(state.selected && findEvent(state.selected) ? state.selected : first.key, { quiet: true });
+}
+// ["kid-friendly", "outdoors"] → "kid-friendly or outdoors"
+function listWords(a) {
+  return a.length < 2 ? (a[0] ? `matched ${a[0]}` : '') : `matched ${a.slice(0, -1).join(', ')} or ${a[a.length - 1]}`;
 }
 function section(title, items, note) {
   return `<section class="section"><h2>${esc(title)}${note ? `<span>${esc(note)}</span>` : ''}</h2>${items.map(row).join('')}</section>`;

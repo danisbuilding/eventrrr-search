@@ -33,14 +33,18 @@ as $$ select lower(extensions.unaccent('extensions.unaccent'::regdictionary, coa
 -- Ranking: tier 'top' (score ≥ 3), then 'fill' (2), then 'more' (unscored or "can't tell"). A 1 never appears.
 -- Duplicates marked by a reviewer never appear. Past and cancelled events never appear.
 -- ---------------------------------------------------------------------------------------------------------
-drop function if exists search_events(jsonb);
-create function search_events(params jsonb default '{}'::jsonb)
+-- search_events_v2 replaces search_events (kept in the database, unused, so nothing had to be dropped).
+-- params (all optional): city, from, to (ISO), text (names; fuzzy), categories[], profile, neighborhood, free, max_price,
+--   kids, outdoor, venue_types[], activities[] (event_tags, written nightly by eventrrr-scout scout/enrich.py),
+--   embedding (512 floats for the question's topic), topic_min (minimum meaning similarity, 0–1; omit to rank only),
+--   limit.
+create or replace function search_events_v2(params jsonb default '{}'::jsonb)
 returns table (
   key text, occurrence_kind text, title text, description text,
   starts_at timestamptz, ends_at timestamptz, all_day boolean, timezone text, ongoing boolean,
   venue text, address text, neighborhood text,
   price_text text, price_min numeric, price_max numeric, currency text, is_free boolean,
-  url text, category text, tier text, rank numeric
+  url text, category text, tier text, rank numeric, match numeric
 )
 language sql stable security definer
 set search_path = public, extensions
@@ -58,6 +62,17 @@ with p as (
     nullif(search_fold(params->>'neighborhood'), '')                                       as hood,
     coalesce((params->>'free')::boolean, false)                                            as free_only,
     (params->>'max_price')::numeric                                                        as max_price,
+    coalesce((params->>'kids')::boolean, false)                                            as kids,
+    coalesce((params->>'outdoor')::boolean, false)                                         as outdoor,
+    coalesce(array(select jsonb_array_elements_text(
+      case when jsonb_typeof(params->'venue_types') = 'array' then params->'venue_types' else '[]'::jsonb end)),
+      '{}')                                                                                as vtypes,
+    coalesce(array(select jsonb_array_elements_text(
+      case when jsonb_typeof(params->'activities') = 'array' then params->'activities' else '[]'::jsonb end)),
+      '{}')                                                                                as acts,
+    case when jsonb_typeof(params->'embedding') = 'array' and jsonb_array_length(params->'embedding') = 512
+         then (params->'embedding')::text::extensions.vector end                           as qvec,
+    (params->>'topic_min')::real                                                           as topic_min,
     least(greatest(coalesce((params->>'limit')::int, 120), 1), 200)                        as lim
 ),
 scores as (
@@ -81,13 +96,16 @@ base as (
          coalesce(e.address, v.address)          as addr,
          coalesce(e.neighborhood, v.neighborhood) as hood_name,
          s.prof_score, s.best_score,
-         coalesce(s.prof_score, s.best_score)    as eff_score
+         coalesce(s.prof_score, s.best_score)    as eff_score,
+         -- meaning match between the question's topic and the event (0–1), null without an embedding
+         case when p.qvec is not null and t.embedding is not null then (1 - (t.embedding <=> p.qvec))::numeric end as sim
   from occurrences o
   join events e  on e.id = o.event_id
   join cities c  on c.id = e.city_id
   left join venues v on v.id = e.venue_id
   left join scores s on s.occurrence_id = o.id
   left join current_reviews r on r.event_id = e.id
+  left join event_tags t on t.event_id = e.id
   left join lateral (
     select bool_or(f.severity = 'demote') as demote,
            max(f.suggested_starts_at) filter (where f.check_name = 'time_found') as time_found
@@ -111,6 +129,10 @@ base as (
                  o.ends_at,
                  o.starts_at + case when e.all_day then interval '1 day' else interval '4 hours' end) >= p.dfrom
     and (cardinality(p.cats) = 0 or e.eventrrr_category = any (p.cats))
+    and (not p.kids or t.kid_friendly)
+    and (not p.outdoor or t.outdoor)
+    and (cardinality(p.vtypes) = 0 or t.venue_type = any (p.vtypes))
+    and (cardinality(p.acts) = 0 or t.activity = any (p.acts))
     and (not p.free_only
          or e.is_free
          or e.price_min = 0
@@ -140,36 +162,24 @@ scored as (
          end as hood_ok
   from base b cross join p
 )
-select s.key,
-       s.kind,
-       s.title,
-       left(s.description, 600),
-       s.o_start,
-       s.o_end,
-       s.all_day,
-       s.timezone,
+select s.key, s.kind, s.title, left(s.description, 600), s.o_start, s.o_end, s.all_day, s.timezone,
        (s.is_ongoing or (s.o_end is not null and s.o_end - s.o_start > interval '1 day')),
-       s.venue_name,
-       s.addr,
-       s.hood_name,
-       s.price_text,
-       s.price_min,
-       s.price_max,
-       s.price_currency,
-       s.is_free,
-       s.url,
-       s.eventrrr_category,
+       s.venue_name, s.addr, s.hood_name, s.price_text, s.price_min, s.price_max, s.price_currency, s.is_free,
+       s.url, s.eventrrr_category,
        -- a date the source page disputes (search_flags date_mismatch) goes to "Show more" until resolved
        case when s.demote then 'more' when s.eff_score >= 3 then 'top' when s.eff_score = 2 then 'fill' else 'more' end,
        -- one number that orders results; it encodes the tier but never the score itself
        round((case when s.demote then 1 when s.eff_score >= 3 then 3 when s.eff_score = 2 then 2 else 1 end) * 100
              + (case when s.prof_score is not null then 20 else 0 end)
              + coalesce(s.eff_score, 0) * 5
-             + s.text_rank::numeric * 10, 2)
+             + s.text_rank::numeric * 10
+             + coalesce(s.sim, 0) * 60, 2),
+       round(coalesce(s.sim, 0), 3)
 from scored s cross join p
 where s.hood_ok
   and coalesce(s.eff_score, 0) <> 1
   and s.text_ok
+  and (p.topic_min is null or s.sim is null or s.sim >= p.topic_min)
 order by 21 desc, s.o_start asc
 limit (select lim from p)
 $$;
@@ -271,12 +281,12 @@ where log_search_action.action in ('open', 'add', 'link', 'more')
 $$;
 
 -- Execute rights: only these four functions, to the public roles.
-revoke all on function search_events(jsonb), search_meta(), log_search(uuid, text, text, jsonb, text, integer, integer, integer),
+revoke all on function search_events_v2(jsonb), search_meta(), log_search(uuid, text, text, jsonb, text, integer, integer, integer),
   log_search_action(uuid, text, text), search_fold(text) from public;
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'anon') then
-    execute 'grant execute on function search_events(jsonb), search_meta(),
+    execute 'grant execute on function search_events_v2(jsonb), search_meta(),
       log_search(uuid, text, text, jsonb, text, integer, integer, integer), log_search_action(uuid, text, text) to anon, authenticated';
   end if;
 end $$;
