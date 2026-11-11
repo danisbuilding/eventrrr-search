@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Eventrrr Search</title>
+  <meta name="description" content="Ask for what you're in the mood for and find events worth going to. Save any of them to your Eventrrr calendar.">
+  <meta name="theme-color" content="#FFFFFF">
+  <meta property="og:title" content="Eventrrr Search">
+  <meta property="og:description" content="Find events worth leaving the house for.">
+  <meta property="og:image" content="https://search.eventrrr.com/assets/tiger-peek.webp">
+  <link rel="icon" href="/assets/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/config.js"></script>
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/" aria-label="Eventrrr Search home">
+      <span class="wordmark">Event<span class="rrr">rrr</span></span>
+      <span class="product">Search</span>
+    </a>
+    <nav class="nav">
+      <a class="nav-link desktop-only" href="https://eventrrr.com">My calendar</a>
+      <button class="signin" id="signin-btn" type="button">Sign in</button>
+      <button class="avatar" id="avatar-btn" type="button" hidden aria-label="Account"></button>
+    </nav>
+  </header>
+
+  <div class="layout" id="layout">
+    <main id="main" class="main">
+      <!-- Home -->
+      <section id="home" class="home" aria-labelledby="headline">
+        <button class="city" id="city-btn" type="button" aria-label="City">
+          <span id="city-name">Mexico City</span>
+        </button>
+        <h1 id="headline" class="headline">&nbsp;</h1>
+        <div class="bar-wrap home-bar">
+          <img class="tiger-peek" src="/assets/tiger-peek.webp" alt="" width="480" height="399">
+          <form class="bar" id="home-form" role="search">
+            <label for="q-home" class="sr">Search events</label>
+            <svg class="i" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+            <input id="q-home" name="q" type="search" autocomplete="off" enterkeyhint="search" placeholder="Something low-key this weekend…">
+            <button class="go" type="submit" aria-label="Search"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></button>
+          </form>
+        </div>
+        <div class="label">Try</div>
+        <div class="chips" id="suggestions"></div>
+        <div class="picks-head"><span class="label">Top picks this week</span><a href="?all=1" id="see-all">See all</a></div>
+        <div id="picks" class="picks" aria-live="polite"></div>
+      </section>
+
+      <!-- Results -->
+      <section id="results" class="results" hidden>
+        <div class="bar-wrap results-bar">
+          <span class="bar-avatar"><img src="/assets/tiger-avatar.webp" alt="" width="48" height="48"></span>
+          <form class="bar" id="results-form" role="search">
+            <label for="q-results" class="sr">Search events</label>
+            <input id="q-results" name="q" type="search" autocomplete="off" enterkeyhint="search">
+            <button class="clear" type="button" id="clear-btn" aria-label="Clear search"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+            <button class="go" type="submit" aria-label="Search"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></button>
+          </form>
+        </div>
+        <div id="searching" class="searching"></div>
+        <div id="result-list" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <aside id="pane" class="pane" aria-label="Event details" hidden></aside>
+  </div>
+
+  <dialog id="sheet" class="sheet" aria-label="Event details"></dialog>
+  <dialog id="signin" class="sheet signin-sheet" aria-label="Sign in to save"></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
