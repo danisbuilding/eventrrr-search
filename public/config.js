@@ -11,8 +11,8 @@ window.SEARCH_CONFIG = {
   // Shown while results load; one picked at random per search. Each frame shows for its ms, then the loop repeats.
   // Remove an entry to retire it. Images live in /assets/loaders/<file>.webp.
   loaders: [
-    { label: "Pondering", frames: [["pondering-1", 1200], ["pondering-2", 1000]] },
-    { label: "Researching", frames: [["researching-1", 700], ["researching-2", 220], ["researching-3", 260]] },
+    { label: "Pondering", frames: [["pondering-1", 1100], ["pondering-2", 1100]] },
+    { label: "Researching", frames: [["researching-1", 900], ["researching-2", 170], ["researching-3", 190], ["researching-4", 240]] },
     { label: "Searching with the Eye of the Tiger", frames: [["tiger-1", 300], ["tiger-2", 300]] },
   ],
   suggestions: ["Free this weekend", "Tonight", "Date night", "Live music", "Near Roma Norte"],
