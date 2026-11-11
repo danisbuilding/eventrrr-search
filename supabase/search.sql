@@ -70,8 +70,12 @@ scores as (
   group by ca.occurrence_id
 ),
 base as (
-  select o.id as occ_id, o.kind, o.starts_at as o_start, o.ends_at as o_end,
-         e.key, e.title, e.description, e.all_day, e.timezone, e.is_ongoing, e.price_text, e.price_min, e.price_max,
+  select o.id as occ_id, o.kind,
+         -- accuracy check (search_flags): an all-day event whose page gives a time shows that time
+         case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end as o_start,
+         case when e.all_day and fl.time_found is not null then null else o.ends_at end as o_end,
+         coalesce(fl.demote, false) as demote,
+         e.key, e.title, e.description, (e.all_day and fl.time_found is null) as all_day, e.timezone, e.is_ongoing, e.price_text, e.price_min, e.price_max,
          e.price_currency, e.is_free, e.url, e.eventrrr_category,
          coalesce(v.name, e.venue_text)          as venue_name,
          coalesce(e.address, v.address)          as addr,
@@ -84,6 +88,10 @@ base as (
   left join venues v on v.id = e.venue_id
   left join scores s on s.occurrence_id = o.id
   left join current_reviews r on r.event_id = e.id
+  left join lateral (
+    select bool_or(f.severity = 'demote') as demote,
+           max(f.suggested_starts_at) filter (where f.check_name = 'time_found') as time_found
+    from search_flags f where f.event_id = e.id and f.status = 'open') fl on true
   cross join p
   where c.slug = p.city
     and e.status in ('live', 'moved')
@@ -97,8 +105,11 @@ base as (
       where e2.id <> e.id and e2.url = e.url and e2.city_id = e.city_id
         and split_part(e2.key, '|', 1) = split_part(e.key, '|', 1)
         and r2.created_at > r1.created_at)
-    and o.starts_at <= p.dto
-    and coalesce(o.ends_at, o.starts_at + interval '4 hours') >= p.dfrom
+    and (case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end) <= p.dto
+    -- still on: timed events count as 4 hours long, all-day ones as the whole day
+    and coalesce(case when e.all_day and fl.time_found is not null then fl.time_found + interval '4 hours' end,
+                 o.ends_at,
+                 o.starts_at + case when e.all_day then interval '1 day' else interval '4 hours' end) >= p.dfrom
     and (cardinality(p.cats) = 0 or e.eventrrr_category = any (p.cats))
     and (not p.free_only
          or e.is_free
@@ -148,9 +159,10 @@ select s.key,
        s.is_free,
        s.url,
        s.eventrrr_category,
-       case when s.eff_score >= 3 then 'top' when s.eff_score = 2 then 'fill' else 'more' end,
+       -- a date the source page disputes (search_flags date_mismatch) goes to "Show more" until resolved
+       case when s.demote then 'more' when s.eff_score >= 3 then 'top' when s.eff_score = 2 then 'fill' else 'more' end,
        -- one number that orders results; it encodes the tier but never the score itself
-       round((case when s.eff_score >= 3 then 3 when s.eff_score = 2 then 2 else 1 end) * 100
+       round((case when s.demote then 1 when s.eff_score >= 3 then 3 when s.eff_score = 2 then 2 else 1 end) * 100
              + (case when s.prof_score is not null then 20 else 0 end)
              + coalesce(s.eff_score, 0) * 5
              + s.text_rank::numeric * 10, 2)
