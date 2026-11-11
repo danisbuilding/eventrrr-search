@@ -163,10 +163,9 @@ async function runSearch({ q, filters }) {
   $('#q-results').value = q || '';
   state.showMore = false; state.ongoingOpen = false; state.selected = null;
   $('#searching').innerHTML = '';
-  $('#result-list').innerHTML = '<div class="skel"></div>'.repeat(6);
   setPane(false);
   window.scrollTo(0, 0);
-  const stopLoader = startLoader(q, !!filters);
+  const stopLoader = startLoader();
   try {
     const pre = !filters && pending && pending.q === q && pending.city === state.city ? pending.promise : null;
     pending = null;
@@ -180,31 +179,37 @@ async function runSearch({ q, filters }) {
   }
 }
 // ---------------------------------------------------------------- loading state
-// The tiger searches and a status line steps through what's happening.
-// Shown only if the wait passes 250 ms, so fast responses don't flash.
-function startLoader(q, edited) {
-  const box = $('#searching');
-  const bar = $('.results-bar');
-  const n = (state.meta?.cities || []).find((c) => c.slug === state.city)?.upcoming;
-  const steps = [
-    edited || !q ? 'Updating your search' : `Reading \u201c${q.length > 40 ? q.slice(0, 38) + '\u2026' : q}\u201d`,
-    n ? `Checking ${n} upcoming events` : 'Checking upcoming events',
-    'Picking the best ones',
-    'Almost there',
-  ];
-  let i = 0, step = null;
-  const show = setTimeout(() => {
-    bar.classList.add('is-loading');
-    box.innerHTML = `<p class="loading-line" role="status"><span class="lens" aria-hidden="true"></span><span id="loading-text">${esc(steps[0])}</span><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span></p>`;
-    step = setInterval(() => {
-      if (i >= steps.length - 1) return clearInterval(step);
-      const t = $('#loading-text');
-      if (!t) return clearInterval(step);
-      t.classList.add('out');
-      setTimeout(() => { t.textContent = steps[++i]; t.classList.remove('out'); }, 180);
-    }, 1300);
-  }, 250);
-  return () => { clearTimeout(show); clearInterval(step); bar.classList.remove('is-loading'); };
+// A random tiger loader (Pondering / Researching / Eye of the Tiger) cycles its frames until results arrive.
+// It fades in after a short delay, so fast responses don't flash it.
+let lastLoader = null;
+const loaderSrc = (f) => `/assets/loaders/${f}.webp`;
+function preloadLoaders() {
+  (C.loaders || []).forEach((l) => l.frames.forEach(([f]) => { const i = new Image(); i.src = loaderSrc(f); }));
+}
+function startLoader() {
+  const list = C.loaders || [];
+  if (!list.length) return () => {};
+  const pool = list.length > 1 ? list.filter((l) => l !== lastLoader) : list;
+  const l = pool[Math.floor(Math.random() * pool.length)];
+  lastLoader = l;
+  $('#result-list').innerHTML = `
+    <div class="loader" role="status" aria-label="${esc(l.label)}">
+      <p class="loader-word">${esc(l.label)}<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span></p>
+      <div class="loader-art">${l.frames.map(([f], i) => `<img src="${loaderSrc(f)}" alt="" width="440" height="440"${i ? ' hidden' : ''}>`).join('')}</div>
+    </div>`;
+  const imgs = [...$('#result-list').querySelectorAll('.loader-art img')];
+  let i = 0, timer = null;
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const tick = () => {
+    timer = setTimeout(() => {
+      imgs[i].hidden = true;
+      i = (i + 1) % imgs.length;
+      imgs[i].hidden = false;
+      tick();
+    }, l.frames[i][1]);
+  };
+  if (!still && imgs.length > 1) tick();
+  return () => clearTimeout(timer);
 }
 function removeChip(field, value) {
   const f = { ...state.data.filters };
@@ -525,5 +530,6 @@ function route() {
 }
 
 initHome();
+(window.requestIdleCallback || setTimeout)(preloadLoaders);
 initAuth();
 route();

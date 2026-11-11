@@ -8,5 +8,12 @@ window.SEARCH_CONFIG = {
   savingEnabled: true,
   // One of these plays at random each time someone searches from the home bar. Remove a name to retire it.
   animations: ["claws", "tilt", "wink", "snap", "tail"],
+  // Shown while results load; one picked at random per search. Each frame shows for its ms, then the loop repeats.
+  // Remove an entry to retire it. Images live in /assets/loaders/<file>.webp.
+  loaders: [
+    { label: "Pondering", frames: [["pondering-1", 1200], ["pondering-2", 1000]] },
+    { label: "Researching", frames: [["researching-1", 650], ["researching-2", 140], ["researching-3", 140]] },
+    { label: "Searching with the Eye of the Tiger", frames: [["tiger-1", 300], ["tiger-2", 300]] },
+  ],
   suggestions: ["Free this weekend", "Tonight", "Date night", "Live music", "Near Roma Norte"],
 };
