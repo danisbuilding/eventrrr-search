@@ -44,13 +44,14 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
 .headline { margin: 6px 0 0; min-height: 114px; max-width: 320px; font-size: 32px; line-height: 38px; font-weight: 300; letter-spacing: -0.025em; }
 .bar-wrap { position: relative; }
 .home-bar { margin-top: 112px; }
-.tiger { position: absolute; right: 54px; bottom: 53px; width: 150px; z-index: 0; pointer-events: none; }
+.tiger { position: absolute; right: 54px; bottom: 53px; width: 156px; z-index: 0; pointer-events: none; }
 .tiger-body { position: relative; transform-origin: 50% 100%; }
 .tiger-peek { display: block; width: 100%; height: auto; }
 .tiger-frame { position: absolute; inset: 0; width: 100%; height: auto; opacity: 0; }
 .tiger-frame[hidden], .tiger-tail[hidden] { display: none !important; }
-.tiger-tail { position: absolute; left: -46px; bottom: -40px; width: 64px; height: auto; transform-origin: 50% 100%; transform: translateY(100%); z-index: -1; }
-.snap-lines { position: absolute; left: -14px; bottom: 6px; width: 40px; height: 40px; fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; opacity: 0; }
+.tail-clip { position: absolute; left: -44px; bottom: 0; width: 80px; height: 150px; overflow: hidden; pointer-events: none; }
+.tiger-tail { position: absolute; left: 20px; bottom: 0; width: 40px; height: auto; transform-origin: 50% 100%; transform: translateY(100%); }
+.snap-lines { position: absolute; right: -22px; top: 30%; width: 34px; height: 34px; fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; opacity: 0; }
 .claws { position: absolute; left: 0; right: 0; bottom: 0; height: 54px; width: 100%; z-index: 2; pointer-events: none; fill: none; stroke: var(--orange); stroke-width: 7; stroke-linecap: round; opacity: 0; }
 .claws path { stroke-dasharray: 80; stroke-dashoffset: 80; }
 
@@ -207,7 +208,7 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
   .main { padding: 36px 48px 96px 64px; }
   .headline { font-size: 40px; line-height: 46px; max-width: 470px; min-height: 92px; }
   .home-bar { margin-top: 120px; }
-  .tiger { width: 170px; right: 84px; }
+  .tiger { width: 176px; right: 84px; }
   .layout.with-pane { display: grid; grid-template-columns: minmax(0, 1fr) 440px; }
   .layout.with-pane .pane { display: block; position: sticky; top: 68px; height: calc(100vh - 68px); overflow: auto; border-left: 1px solid var(--line); }
   .pane .detail { min-height: 100%; padding-top: 22px; }
