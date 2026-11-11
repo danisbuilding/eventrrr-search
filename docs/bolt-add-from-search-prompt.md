@@ -1,6 +1,6 @@
 # Bolt prompt: `add_from_search` (Eventrrr database only)
 
-Status: not yet run. Run it in the **Eventrrr** Bolt project, then set `savingEnabled: true` in `public/config.js`.
+Status: run in Bolt on 2026-11-11; all 7 tests passed. `savingEnabled` is on in `public/config.js`.
 It adds one column, two database functions and nothing else: no screens, no routes, no edge functions.
 
 Also, in Bolt → Database → Authentication → URL configuration, add `https://search.eventrrr.com/**` to the
