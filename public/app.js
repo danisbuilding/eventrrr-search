@@ -70,19 +70,23 @@ const xIcon = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true
 
 // ---------------------------------------------------------------- home
 async function initHome() {
-  try {
-    const h = await fetch('/config/headlines.json').then((r) => r.json());
+  // Picks, headline and meta load in parallel; picks don't wait on the others.
+  if (!state.city) state.city = 'cdmx';
+  const picks = loadPicks();
+  $('#suggestions').innerHTML = (C.suggestions || []).map((s) => `<a class="chip" href="?q=${encodeURIComponent(s)}">${esc(s)}</a>`).join('');
+  const headline = fetch('/config/headlines.json').then((r) => r.json()).then((h) => {
     const list = (h.headlines || []).filter(Boolean);
     $('#headline').textContent = list.length ? list[Math.floor(Math.random() * list.length)] : 'What are you in the mood for?';
-  } catch { $('#headline').textContent = 'What are you in the mood for?'; }
-  $('#suggestions').innerHTML = (C.suggestions || []).map((s) => `<a class="chip" href="?q=${encodeURIComponent(s)}">${esc(s)}</a>`).join('');
-  try {
-    state.meta = await api('/api/meta');
-    const cities = state.meta.cities || [];
-    if (!state.city || !cities.find((c) => c.slug === state.city)) state.city = cities[0]?.slug || 'cdmx';
+  }).catch(() => { $('#headline').textContent = 'What are you in the mood for?'; });
+  const meta = api('/api/meta').then((m) => {
+    state.meta = m;
+    const cities = m.cities || [];
+    const before = state.city;
+    if (!cities.find((c) => c.slug === state.city)) state.city = cities[0]?.slug || 'cdmx';
     renderCity();
-  } catch { /* meta is optional */ }
-  loadPicks();
+    if (state.city !== before) loadPicks();
+  }).catch(() => { /* meta is optional */ });
+  await Promise.all([picks, headline, meta]);
 }
 function renderCity() {
   const cities = state.meta?.cities || [];
@@ -162,15 +166,45 @@ async function runSearch({ q, filters }) {
   $('#result-list').innerHTML = '<div class="skel"></div>'.repeat(6);
   setPane(false);
   window.scrollTo(0, 0);
+  const stopLoader = startLoader(q, !!filters);
   try {
     const pre = !filters && pending && pending.q === q && pending.city === state.city ? pending.promise : null;
     pending = null;
     state.data = await (pre || api('/api/search', { q, filters, city: state.city }));
+    stopLoader();
     renderResults();
   } catch (e) {
+    stopLoader();
     $('#result-list').innerHTML = `<div class="empty"><p>${esc(e.message)}</p><button class="toggle" type="button" id="retry">Try again</button></div>`;
     $('#retry').onclick = () => runSearch({ q, filters });
   }
+}
+// ---------------------------------------------------------------- loading state
+// The tiger searches and a status line steps through what's happening.
+// Shown only if the wait passes 250 ms, so fast responses don't flash.
+function startLoader(q, edited) {
+  const box = $('#searching');
+  const bar = $('.results-bar');
+  const n = (state.meta?.cities || []).find((c) => c.slug === state.city)?.upcoming;
+  const steps = [
+    edited || !q ? 'Updating your search' : `Reading \u201c${q.length > 40 ? q.slice(0, 38) + '\u2026' : q}\u201d`,
+    n ? `Checking ${n} upcoming events` : 'Checking upcoming events',
+    'Picking the best ones',
+    'Almost there',
+  ];
+  let i = 0, step = null;
+  const show = setTimeout(() => {
+    bar.classList.add('is-loading');
+    box.innerHTML = `<p class="loading-line" role="status"><span class="lens" aria-hidden="true"></span><span id="loading-text">${esc(steps[0])}</span><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span></p>`;
+    step = setInterval(() => {
+      if (i >= steps.length - 1) return clearInterval(step);
+      const t = $('#loading-text');
+      if (!t) return clearInterval(step);
+      t.classList.add('out');
+      setTimeout(() => { t.textContent = steps[++i]; t.classList.remove('out'); }, 180);
+    }, 1300);
+  }, 250);
+  return () => { clearTimeout(show); clearInterval(step); bar.classList.remove('is-loading'); };
 }
 function removeChip(field, value) {
   const f = { ...state.data.filters };

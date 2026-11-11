@@ -143,6 +143,19 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
 .empty img { width: 140px; }
 .skel { height: 64px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, #fff 0, var(--soft) 40%, #fff 80%); background-size: 200% 100%; animation: sk 1.2s linear infinite; }
 @keyframes sk { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+/* Loading: the avatar scans and a status line steps through the search */
+.results-bar.is-loading .bar-avatar img { animation: a-scan 1.6s ease-in-out infinite; transform-origin: 50% 80%; }
+@keyframes a-scan { 0%, 100% { transform: rotate(0) translateX(0); } 25% { transform: rotate(-7deg) translateX(-2px); } 75% { transform: rotate(7deg) translateX(2px); } }
+.loading-line { display: flex; align-items: center; gap: 8px; margin: 0; min-height: 30px; font-size: 13px; color: var(--muted); }
+.loading-line #loading-text { transition: opacity .18s, transform .18s; }
+.loading-line #loading-text.out { opacity: 0; transform: translateY(-4px); }
+.lens { width: 14px; height: 14px; flex: none; border: 2px solid var(--orange); border-radius: 50%; position: relative; animation: a-lens 1.6s ease-in-out infinite; }
+.lens::after { content: ''; position: absolute; width: 2px; height: 6px; background: var(--orange); right: -4px; bottom: -5px; transform: rotate(-45deg); border-radius: 1px; }
+@keyframes a-lens { 0%, 100% { transform: translate(-2px, 0); } 50% { transform: translate(2px, -2px); } }
+.dots { display: inline-flex; gap: 3px; }
+.dots i { width: 4px; height: 4px; border-radius: 2px; background: var(--muted); animation: a-dot 1s infinite; }
+.dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes a-dot { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
 
 /* Event details (sheet on phones, pane on desktop) */
 .sheet { border: none; padding: 0; margin: auto 0 0; width: 100%; max-width: 100%; max-height: 88vh; border-radius: 16px 16px 0 0; background: #fff; color: var(--ink); box-shadow: 0 -8px 30px rgba(28,25,23,.12); }
@@ -230,4 +243,4 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
   .wordmark, .product { font-size: 20px; }
   .signin { padding: 0 12px; font-size: 12px; }
 }
-@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .skel, .lens, .dots i, .results-bar.is-loading .bar-avatar img { animation: none; } .loading-line #loading-text { transition: none; } }
