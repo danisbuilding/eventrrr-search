@@ -44,7 +44,46 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
 .headline { margin: 6px 0 0; min-height: 114px; max-width: 320px; font-size: 32px; line-height: 38px; font-weight: 300; letter-spacing: -0.025em; }
 .bar-wrap { position: relative; }
 .home-bar { margin-top: 112px; }
-.tiger-peek { position: absolute; right: 54px; bottom: 53px; width: 150px; height: auto; z-index: 0; pointer-events: none; }
+.tiger { position: absolute; right: 54px; bottom: 53px; width: 150px; z-index: 0; pointer-events: none; }
+.tiger-body { position: relative; transform-origin: 50% 100%; }
+.tiger-peek { display: block; width: 100%; height: auto; }
+.tiger-frame { position: absolute; inset: 0; width: 100%; height: auto; opacity: 0; }
+.tiger-frame[hidden], .tiger-tail[hidden] { display: none !important; }
+.tiger-tail { position: absolute; left: -46px; bottom: -40px; width: 64px; height: auto; transform-origin: 50% 100%; transform: translateY(100%); z-index: -1; }
+.snap-lines { position: absolute; left: -14px; bottom: 6px; width: 40px; height: 40px; fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; opacity: 0; }
+.claws { position: absolute; left: 0; right: 0; bottom: 0; height: 54px; width: 100%; z-index: 2; pointer-events: none; fill: none; stroke: var(--orange); stroke-width: 7; stroke-linecap: round; opacity: 0; }
+.claws path { stroke-dasharray: 80; stroke-dashoffset: 80; }
+
+/* Search animations: one plays per search from the home bar (app.js picks it). */
+.play-tilt .tiger-body { animation: a-tilt 720ms cubic-bezier(.3,.7,.3,1); }
+@keyframes a-tilt { 0% { transform: rotate(0); } 30% { transform: rotate(-9deg); } 62% { transform: rotate(5deg); } 100% { transform: rotate(0); } }
+.play-claws .claws { animation: a-fade 700ms ease-out forwards; }
+.play-claws .claws path { animation: a-slash 260ms cubic-bezier(.6,0,.2,1) forwards; }
+.play-claws .claws path:nth-child(2) { animation-delay: 70ms; }
+.play-claws .claws path:nth-child(3) { animation-delay: 140ms; }
+.play-claws .tiger-body { animation: a-hop 420ms 120ms ease-out; }
+@keyframes a-slash { to { stroke-dashoffset: 0; } }
+@keyframes a-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes a-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-8px); } }
+.play-wink #tiger-wink { animation: a-blink 640ms steps(1) forwards; }
+.play-wink .tiger-body { animation: a-hop 640ms ease-out; }
+@keyframes a-blink { 0%, 25% { opacity: 0; } 25.01%, 75% { opacity: 1; } 75.01%, 100% { opacity: 0; } }
+.play-snap #tiger-snap { animation: a-blink 620ms steps(1) forwards; }
+.play-snap .snap-lines { animation: a-pop 380ms 180ms ease-out forwards; }
+.play-snap .tiger-body { animation: a-jolt 620ms ease-out; }
+@keyframes a-pop { 0% { opacity: 0; transform: scale(.4); } 40% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0; transform: scale(1.3); } }
+@keyframes a-jolt { 0%, 100% { transform: translateY(0) rotate(0); } 30% { transform: translateY(-4px) rotate(-2deg); } 55% { transform: translateY(0) rotate(1deg); } }
+.play-tail .tiger-tail { animation: a-tail 980ms ease-in-out forwards; }
+@keyframes a-tail {
+  0% { transform: translateY(100%) rotate(0); }
+  20% { transform: translateY(0) rotate(-14deg); }
+  38% { transform: translateY(0) rotate(14deg); }
+  56% { transform: translateY(0) rotate(-12deg); }
+  74% { transform: translateY(0) rotate(10deg); }
+  100% { transform: translateY(100%) rotate(0); }
+}
+.nudge { animation: a-tilt 520ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .tiger *, .claws, .claws path, .nudge { animation: none !important; } }
 .bar { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 6px 0 16px; background: #fff; border: 1px solid var(--control); border-radius: 8px; box-shadow: 0 2px 8px rgba(28,25,23,.05); }
 .bar:focus-within { border-color: var(--ink); }
 .bar .i { color: var(--muted); flex: none; }
@@ -151,7 +190,7 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
   .main { padding: 36px 48px 96px 64px; }
   .headline { font-size: 40px; line-height: 46px; max-width: 470px; min-height: 92px; }
   .home-bar { margin-top: 120px; }
-  .tiger-peek { width: 170px; right: 84px; }
+  .tiger { width: 170px; right: 84px; }
   .layout.with-pane { display: grid; grid-template-columns: minmax(0, 1fr) 440px; }
   .layout.with-pane .pane { display: block; position: sticky; top: 68px; height: calc(100vh - 68px); overflow: auto; border-left: 1px solid var(--line); }
   .pane .detail { min-height: 100%; padding-top: 22px; }

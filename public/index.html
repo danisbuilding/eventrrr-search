@@ -40,7 +40,16 @@
         </button>
         <h1 id="headline" class="headline">&nbsp;</h1>
         <div class="bar-wrap home-bar">
-          <img class="tiger-peek" src="/assets/tiger-peek.webp" alt="" width="480" height="399">
+          <div class="tiger" id="tiger" aria-hidden="true">
+            <img class="tiger-tail" id="tiger-tail" src="/assets/tiger-tail.webp" alt="" hidden>
+            <div class="tiger-body">
+              <img class="tiger-peek" src="/assets/tiger-peek.webp" alt="" width="480" height="399">
+              <img class="tiger-frame" id="tiger-wink" src="/assets/tiger-wink.webp" alt="" hidden>
+              <img class="tiger-frame" id="tiger-snap" src="/assets/tiger-snap.webp" alt="" hidden>
+              <svg class="snap-lines" viewBox="0 0 60 60"><path d="M30 18V4M42 22l9-9M18 22l-9-9M46 34h12"/></svg>
+            </div>
+          </div>
+          <svg class="claws" aria-hidden="true" viewBox="0 0 300 60" preserveAspectRatio="none"><path d="M70 56L118 4"/><path d="M118 56L166 4"/><path d="M166 56L214 4"/></svg>
           <form class="bar" id="home-form" role="search">
             <label for="q-home" class="sr">Search events</label>
             <svg class="i" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>

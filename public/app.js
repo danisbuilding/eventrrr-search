@@ -120,6 +120,39 @@ function go(q, { push = true } = {}) {
   if (push) history.pushState({}, '', url); else history.replaceState({}, '', url);
   route();
 }
+// Start the request while the tiger animates, so the animation costs no extra wait.
+let pending = null;
+function prefetch(q) {
+  pending = { q, city: state.city, promise: api('/api/search', { q, city: state.city }) };
+  pending.promise.catch(() => {});
+}
+
+// ---------------------------------------------------------------- tiger animations
+const ANIM_MS = { claws: 700, tilt: 720, wink: 640, snap: 620, tail: 980 };
+const animReady = {
+  claws: true, tilt: true,
+  wink: () => imgOk('#tiger-wink'), snap: () => imgOk('#tiger-snap'), tail: () => imgOk('#tiger-tail'),
+};
+function imgOk(sel) { const i = $(sel); return !!(i && i.complete && i.naturalWidth > 0); }
+let lastAnim = null;
+function playSearchAnimation() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
+  const names = (C.animations || ['claws', 'tilt']).filter((n) => {
+    const r = animReady[n];
+    return typeof r === 'function' ? r() : !!r;
+  });
+  if (!names.length) return Promise.resolve();
+  const pool = names.length > 1 ? names.filter((n) => n !== lastAnim) : names;
+  const name = pool[Math.floor(Math.random() * pool.length)];
+  lastAnim = name;
+  const wrap = $('.home-bar');
+  ['wink', 'snap', 'tail'].forEach((n) => { const el = $(`#tiger-${n}`); if (el) el.hidden = n !== name; });
+  wrap.className = wrap.className.replace(/\bplay-\w+/g, '').trim();
+  void wrap.offsetWidth; // restart the animation
+  wrap.classList.add(`play-${name}`);
+  return new Promise((res) => setTimeout(() => { wrap.classList.remove(`play-${name}`); res(); }, ANIM_MS[name]));
+}
+
 async function runSearch({ q, filters }) {
   $('#home').hidden = true;
   $('#results').hidden = false;
@@ -130,7 +163,9 @@ async function runSearch({ q, filters }) {
   setPane(false);
   window.scrollTo(0, 0);
   try {
-    state.data = await api('/api/search', { q, filters, city: state.city });
+    const pre = !filters && pending && pending.q === q && pending.city === state.city ? pending.promise : null;
+    pending = null;
+    state.data = await (pre || api('/api/search', { q, filters, city: state.city }));
     renderResults();
   } catch (e) {
     $('#result-list').innerHTML = `<div class="empty"><p>${esc(e.message)}</p><button class="toggle" type="button" id="retry">Try again</button></div>`;
@@ -388,7 +423,12 @@ document.addEventListener('submit', async (ev) => {
   const f = ev.target;
   if (f.id === 'home-form' || f.id === 'results-form') {
     const q = f.q.value.trim();
-    if (q) { f.q.blur(); go(q); }
+    if (!q) return;
+    f.q.blur();
+    prefetch(q);
+    if (f.id === 'home-form') await playSearchAnimation();
+    else { const a = $('.bar-avatar'); a.classList.remove('nudge'); void a.offsetWidth; a.classList.add('nudge'); }
+    go(q);
   } else if (f.id === 'email-form') {
     const s = await supa();
     const { error } = await s.auth.signInWithPassword({ email: $('#em').value.trim(), password: $('#pw').value });

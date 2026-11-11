@@ -6,5 +6,7 @@ window.SEARCH_CONFIG = {
   eventrrrApp: "https://eventrrr.com",
   // add_from_search and my_search_keys exist in Eventrrr (Bolt run 2026-11-11).
   savingEnabled: true,
+  // One of these plays at random each time someone searches from the home bar. Remove a name to retire it.
+  animations: ["claws", "tilt", "wink", "snap", "tail"],
   suggestions: ["Free this weekend", "Tonight", "Date night", "Live music", "Near Roma Norte"],
 };
