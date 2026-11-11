@@ -30,7 +30,7 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
 .product { font-size: 22px; font-weight: 500; letter-spacing: -0.02em; color: var(--orange); }
 .nav { display: flex; align-items: center; gap: 20px; font-size: 14px; }
 .nav-link { text-decoration: none; }
-.signin { height: 36px; padding: 0 14px; border: 1px solid var(--ink); border-radius: 18px; background: none; font-size: 13px; font-weight: 500; }
+.signin { height: 36px; padding: 0 14px; white-space: nowrap; border: 1px solid var(--ink); border-radius: 18px; background: none; font-size: 13px; font-weight: 500; }
 .avatar { width: 34px; height: 34px; border-radius: 17px; border: none; background: var(--ink); color: #fff; font-size: 12px; font-weight: 500; }
 .desktop-only { display: none; }
 
@@ -165,18 +165,35 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
 .secondary { height: 46px; border: 1px solid var(--control); border-radius: 8px; background: #fff; text-decoration: none; font-size: 14px; display: flex; align-items: center; justify-content: center; }
 .pane { display: none; }
 
-/* Sign-in sheet */
-.signin-sheet { overflow: visible; }
-.signin-body { position: relative; padding: 34px 24px calc(28px + env(safe-area-inset-bottom)); }
-.signin-tiger { position: absolute; left: 22px; top: -118px; width: 200px; height: auto; pointer-events: none; }
-.signin-body h1 { margin: 0; font-size: 26px; line-height: 32px; font-weight: 300; letter-spacing: -0.02em; }
-.signin-body p { margin: 10px 0 0; font-size: 14px; line-height: 21px; color: var(--body); }
-.signin-body .actions { margin-top: 28px; }
-.dark { height: 50px; border: none; border-radius: 8px; background: var(--ink); color: #fff; font-size: 15px; font-weight: 500; }
-.email-form { display: flex; flex-direction: column; gap: 8px; }
-.email-form input { height: 46px; padding: 0 12px; border: 1px solid var(--control); border-radius: 8px; font-size: 16px; }
-.err { margin: 4px 0 0; font-size: 13px; color: #B91C1C; }
-.link { align-self: center; border: none; background: none; padding: 12px; font-size: 13px; color: var(--muted); }
+/* Sign-in card: mirrors Eventrrr's own sign-in, with the Search tiger on top */
+.signin-sheet { margin: auto; width: min(420px, calc(100% - 32px)); max-height: none; border-radius: 20px; overflow: visible; box-shadow: 0 20px 60px rgba(28,25,23,.22); }
+.auth { position: relative; padding: 34px 28px 24px; }
+.auth-tiger { position: absolute; right: -6px; top: -86px; width: 220px; height: auto; pointer-events: none; }
+.auth-x { position: absolute; right: 10px; top: 10px; width: 40px; height: 40px; border: none; background: none; display: flex; align-items: center; justify-content: center; z-index: 1; }
+.auth-x svg { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+.auth h1 { margin: 0; max-width: 300px; font-size: 34px; line-height: 38px; font-weight: 500; letter-spacing: -0.03em; }
+.auth-sub { margin: 10px 0 0; max-width: 300px; font-size: 14px; line-height: 20px; color: #78716C; }
+.auth-sub b { color: var(--ink); font-weight: 500; }
+.google { margin: 22px auto 0; width: 100%; max-width: 300px; height: 44px; border: 1px solid var(--control); border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 15px; }
+.google:hover { background: var(--soft); }
+.or { margin: 16px 0 12px; display: flex; align-items: center; gap: 12px; font-size: 12px; color: #A8A29E; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 10px; background: #F3F2F0; }
+.seg button { height: 40px; border: none; border-radius: 8px; background: none; font-size: 14px; color: #57534E; }
+.seg button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(28,25,23,.12); }
+.auth form { margin-top: 18px; display: flex; flex-direction: column; }
+.auth label { margin: 0 0 6px; font-size: 13px; font-weight: 500; }
+.auth input { height: 48px; padding: 0 14px; margin-bottom: 14px; border: 1px solid var(--control); border-radius: 8px; font-size: 16px; }
+.auth input:focus { outline: none; border-color: #E8590C; box-shadow: 0 0 0 3px rgba(232,89,12,.12); }
+.cta { align-self: flex-start; height: 48px; padding: 0 28px; border: none; border-radius: 8px; background: #CE3F1E; color: #fff; font-size: 15px; font-weight: 500; }
+.cta:hover { background: #B93519; }
+.cta[disabled] { opacity: .6; }
+.auth .err { margin: 10px 0 0; font-size: 13px; color: #B91C1C; }
+.auth .ok { margin: 10px 0 0; font-size: 13px; color: var(--green); }
+.auth-terms { margin: 14px 0 0; font-size: 12px; line-height: 18px; color: #78716C; text-align: center; }
+.auth-terms a, .auth-switch button { color: #CE3F1E; }
+.auth-switch { margin: 16px 0 0; font-size: 14px; color: #57534E; text-align: center; }
+.auth-switch button { border: none; background: none; padding: 4px; font-weight: 500; }
 
 /* Toast */
 .toast { position: fixed; left: 20px; right: 20px; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 20; max-width: 440px; margin: 0 auto; min-height: 52px; padding: 0 8px 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--ink); color: #fff; border-radius: 8px; font-size: 13px; box-shadow: 0 8px 24px rgba(28,25,23,.18); }
@@ -206,5 +223,10 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
 }
 @media (max-width: 1023px) {
   .row .c-col { display: none; }
+}
+@media (max-width: 420px) {
+  .top { padding: 0 16px; }
+  .wordmark, .product { font-size: 20px; }
+  .signin { padding: 0 12px; font-size: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }

@@ -340,20 +340,68 @@ async function setUser(user) {
     try { const e = JSON.parse(pending); if (!state.saved.has(e.key)) await save(e); } catch { /* ignore */ }
   }
 }
+const auth = { mode: 'signin', method: 'password', event: null };
+const googleG = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.3 5.7c4.3-3.9 7-9.8 7-17.1z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.3-5.7c-2 1.4-4.7 2.3-8.6 2.3-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
 function openSignin(e) {
+  auth.event = e && e.key ? e : null;
+  auth.mode = 'signin'; auth.method = 'password';
+  if (auth.event) sessionStorage.setItem('search.pendingAdd', JSON.stringify(auth.event));
+  else sessionStorage.removeItem('search.pendingAdd');
+  renderAuth();
   const d = $('#signin');
-  d.innerHTML = `<div class="signin-body">
-    <img class="signin-tiger" src="/assets/tiger-lounging.webp" alt="" width="400" height="347">
-    <h1>Save it to your calendar</h1>
-    <p>Sign in with your Eventrrr account to drop <b style="color:var(--ink);font-weight:500">${esc(e.title)}</b> straight into your calendar. Searching stays free without an account.</p>
-    <div class="actions" id="signin-actions">
-      <button class="dark" type="button" id="google">Continue with Google</button>
-      <button class="secondary" type="button" id="email-toggle">Use email instead</button>
-      <button class="link" type="button" data-close>Keep browsing</button>
+  if (!d.open) d.showModal();
+}
+function renderAuth() {
+  const create = auth.mode === 'create';
+  const link = auth.method === 'link';
+  const what = auth.event ? `<b>${esc(auth.event.title)}</b>` : 'anything you find here';
+  $('#signin').innerHTML = `<div class="auth">
+    <img class="auth-tiger" src="/assets/tiger-lounging-lens.webp" alt="" width="600" height="254">
+    <button class="auth-x" type="button" data-close aria-label="Close">${xIcon}</button>
+    <h1>${create ? 'Create your calendar' : 'Sign in to save'}</h1>
+    <p class="auth-sub">${create ? `Get your free Eventrrr account and save ${what} to it.` : `Save ${what} to your Eventrrr calendar. Searching stays free without an account.`}</p>
+    <button class="google" type="button" id="google">${googleG}Continue with Google</button>
+    <div class="or">or</div>
+    <div class="seg" role="tablist" aria-label="Sign-in method">
+      <button type="button" role="tab" data-method="password" aria-selected="${!link}">Password</button>
+      <button type="button" role="tab" data-method="link" aria-selected="${link}">Email me a link</button>
     </div>
+    <form id="auth-form" novalidate>
+      <label for="au-em">Email</label>
+      <input id="au-em" type="email" autocomplete="email" placeholder="you@example.com" required>
+      ${link ? '' : `<label for="au-pw">Password</label>
+      <input id="au-pw" type="password" autocomplete="${create ? 'new-password' : 'current-password'}" placeholder="${create ? 'At least 8 characters' : 'Your password'}" minlength="${create ? 8 : 1}" required>`}
+      <button class="cta" type="submit">${link ? 'Email me a link' : create ? 'Create account' : 'Sign in'}</button>
+      <p class="err" id="au-err" hidden></p>
+      <p class="ok" id="au-ok" hidden></p>
+    </form>
+    ${create ? `<p class="auth-terms">By creating an account, you agree to Eventrrr's <a href="${esc(C.eventrrrApp)}/terms" target="_blank" rel="noopener">Terms</a> and <a href="${esc(C.eventrrrApp)}/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p>` : ''}
+    <p class="auth-switch">${create ? 'Already have an account?' : 'New to Eventrrr?'} <button type="button" data-authswitch>${create ? 'Sign in' : 'Create an account'}</button></p>
   </div>`;
-  sessionStorage.setItem('search.pendingAdd', JSON.stringify(e));
-  d.showModal();
+}
+async function submitAuth() {
+  const em = $('#au-em').value.trim();
+  const pw = $('#au-pw') ? $('#au-pw').value : '';
+  const err = $('#au-err'), ok = $('#au-ok'), btn = $('#auth-form .cta');
+  err.hidden = true; ok.hidden = true;
+  if (!/^\S+@\S+\.\S+$/.test(em)) { err.textContent = 'Enter your email address.'; err.hidden = false; return; }
+  if (auth.method === 'password' && auth.mode === 'create' && pw.length < 8) { err.textContent = 'Use at least 8 characters.'; err.hidden = false; return; }
+  btn.disabled = true;
+  try {
+    const s = await supa();
+    const redirect = location.href;
+    let res;
+    if (auth.method === 'link') {
+      res = await s.auth.signInWithOtp({ email: em, options: { emailRedirectTo: redirect, shouldCreateUser: auth.mode === 'create' } });
+      if (!res.error) { ok.textContent = `Check ${em} for your sign-in link.`; ok.hidden = false; }
+    } else if (auth.mode === 'create') {
+      res = await s.auth.signUp({ email: em, password: pw, options: { emailRedirectTo: redirect } });
+      if (!res.error && !res.data.session) { ok.textContent = `Almost there: confirm your account from the email we sent to ${em}.`; ok.hidden = false; }
+    } else {
+      res = await s.auth.signInWithPassword({ email: em, password: pw });
+    }
+    if (res.error) { err.textContent = res.error.message; err.hidden = false; }
+  } finally { btn.disabled = false; }
 }
 async function save(e) {
   if (state.busy.has(e.key)) return;
@@ -395,7 +443,7 @@ document.addEventListener('click', async (ev) => {
   if (t.hasAttribute('data-close')) { t.closest('dialog')?.close(); if (!t.closest('dialog')) setPane(false); return; }
   if (t.id === 'more-btn') { state.showMore = true; logAction('more', null); renderResults(); return; }
   if (t.id === 'ongoing-more') { state.ongoingOpen = true; renderResults(); return; }
-  if (t.id === 'signin-btn') { openSignin({ key: '', title: 'anything you find' }); sessionStorage.removeItem('search.pendingAdd'); return; }
+  if (t.id === 'signin-btn') { openSignin(null); return; }
   if (t.id === 'avatar-btn') {
     toast(`<span>${esc(state.user?.email || '')}</span><a href="#" id="signout">Sign out</a>`, 6000);
     return;
@@ -406,17 +454,8 @@ document.addEventListener('click', async (ev) => {
     await s.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.href } });
     return;
   }
-  if (t.id === 'email-toggle') {
-    $('#signin-actions').innerHTML = `<form class="email-form" id="email-form">
-        <label class="sr" for="em">Email</label><input id="em" type="email" autocomplete="email" placeholder="Email" required>
-        <label class="sr" for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" placeholder="Password" required>
-        <button class="dark" type="submit">Sign in</button>
-        <p class="err" id="em-err" hidden></p>
-      </form>
-      <a class="link" href="${esc(C.eventrrrApp)}" target="_blank" rel="noopener">No account? Create one on Eventrrr</a>
-      <button class="link" type="button" data-close>Keep browsing</button>`;
-    $('#em').focus();
-  }
+  if (t.dataset.method) { auth.method = t.dataset.method; const em = $('#au-em')?.value; renderAuth(); if (em) $('#au-em').value = em; return; }
+  if (t.hasAttribute('data-authswitch')) { auth.mode = auth.mode === 'create' ? 'signin' : 'create'; const em = $('#au-em')?.value; renderAuth(); if (em) $('#au-em').value = em; return; }
 });
 document.addEventListener('submit', async (ev) => {
   ev.preventDefault();
@@ -429,10 +468,8 @@ document.addEventListener('submit', async (ev) => {
     if (f.id === 'home-form') await playSearchAnimation();
     else { const a = $('.bar-avatar'); a.classList.remove('nudge'); void a.offsetWidth; a.classList.add('nudge'); }
     go(q);
-  } else if (f.id === 'email-form') {
-    const s = await supa();
-    const { error } = await s.auth.signInWithPassword({ email: $('#em').value.trim(), password: $('#pw').value });
-    if (error) { const e = $('#em-err'); e.textContent = error.message; e.hidden = false; }
+  } else if (f.id === 'auth-form') {
+    submitAuth();
   }
 });
 $('#clear-btn').addEventListener('click', () => { $('#q-results').value = ''; $('#q-results').focus(); });
