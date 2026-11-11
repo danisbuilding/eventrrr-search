@@ -88,6 +88,15 @@ base as (
   where c.slug = p.city
     and e.status in ('live', 'moved')
     and coalesce(r.skip_reason, '') <> 'duplicate'
+    -- Superseded re-reads: when a later run read the same page and the same event under a new date,
+    -- the older read is stale (its key carries the old date, so it never gets updated).
+    and not exists (
+      select 1 from events e2
+      join runs r2 on r2.id = e2.last_seen_run_id
+      join runs r1 on r1.id = e.last_seen_run_id
+      where e2.id <> e.id and e2.url = e.url and e2.city_id = e.city_id
+        and split_part(e2.key, '|', 1) = split_part(e.key, '|', 1)
+        and r2.created_at > r1.created_at)
     and o.starts_at <= p.dto
     and coalesce(o.ends_at, o.starts_at + interval '4 hours') >= p.dfrom
     and (cardinality(p.cats) = 0 or e.eventrrr_category = any (p.cats))

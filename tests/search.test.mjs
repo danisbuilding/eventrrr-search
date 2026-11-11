@@ -126,3 +126,13 @@ test('a text search with no matches retries without the text', async () => {
   assert.equal(r.relaxed, true);
   assert.equal(r.results.length, 1);
 });
+
+test('dedupe matches on the local day and prefers the copy with a start time', () => {
+  const tz = 'America/Mexico_City';
+  const rows = [
+    { key: 'allday', title: 'Garbage se presentará en el Zócalo de la CDMX', starts_at: '2026-11-14T06:00:00+00:00', all_day: true, timezone: tz, occurrence_kind: 'run' },
+    { key: 'timed', title: 'Garbage gratis en el Zócalo', starts_at: '2026-11-15T02:00:00+00:00', all_day: false, timezone: tz, occurrence_kind: 'run' },
+    { key: 'other', title: 'Garbage /// Zócalo Capitalino', starts_at: '2026-11-15T02:00:00+00:00', all_day: false, timezone: tz, occurrence_kind: 'run' },
+  ];
+  assert.deepEqual(dedupe(rows).map((r) => r.key), ['timed']);
+});
