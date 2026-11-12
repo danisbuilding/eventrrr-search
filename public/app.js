@@ -113,6 +113,7 @@ function fromURL() {
   f.setting = ['indoor', 'outdoor'].includes(p.get('setting')) ? p.get('setting') : '';
   f.kids = p.get('kids') === '1';
   f.hideOngoing = p.get('ongoing') !== 'show';
+  if (p.get('city')) state.city = p.get('city').toLowerCase().slice(0, 40);
   return f;
 }
 function toURL(f) {
@@ -126,6 +127,7 @@ function toURL(f) {
   if (f.setting) p.set('setting', f.setting);
   if (f.kids) p.set('kids', '1');
   if (!f.hideOngoing) p.set('ongoing', 'show');
+  if (state.city && state.city !== defaultCity()) p.set('city', state.city);
   if (TEST) p.set('test', '1');
   const s = p.toString();
   return s ? `?${s}` : location.pathname;
@@ -162,24 +164,38 @@ async function initHome() {
     state.meta = m;
     const cities = m.cities || [];
     const before = state.city;
-    if (!cities.find((c) => c.slug === state.city)) state.city = cities[0]?.slug || 'cdmx';
+    if (!liveCities().find((c) => c.slug === state.city)) state.city = defaultCity();
     renderCity();
     renderFinder();
     if (state.city !== before) refresh({ push: false });
   }).catch(() => { /* meta is optional */ });
 }
+// The city menu: live cities are selectable, "soon" ones are listed as Coming soon (cities.search_status in Scout IQ).
+const liveCities = () => (state.meta?.cities || []).filter((c) => c.status !== 'soon');
+const defaultCity = () => liveCities()[0]?.slug || 'cdmx';
 function renderCity() {
   const cities = state.meta?.cities || [];
   const cur = cities.find((c) => c.slug === state.city);
   $('#city-name').textContent = cur ? cur.name : 'Mexico City';
   const btn = $('#city-btn');
-  btn.onclick = cities.length > 1 ? () => {
-    const i = cities.findIndex((c) => c.slug === state.city);
-    state.city = cities[(i + 1) % cities.length].slug;
-    localStorage.setItem('search.city', state.city);
-    renderCity(); refresh({ push: false });
-  } : null;
-  btn.title = cities.length > 1 ? 'Change city' : '';
+  btn.setAttribute('aria-expanded', state.open === 'city');
+  btn.classList.toggle('open', state.open === 'city');
+  const pop = $('#city-pop');
+  pop.hidden = state.open !== 'city';
+  if (state.open === 'city') {
+    pop.innerHTML = '<div class="phead">City</div>' + (cities.length ? cities.map((c) => c.status === 'soon'
+      ? `<div class="mopt soon" aria-disabled="true"><span class="rbox"></span>${esc(c.name)}<span class="soon-tag">Coming soon</span></div>`
+      : mopt('city', c.slug, c.name, c.slug === state.city)).join('') : mopt('city', 'cdmx', 'Mexico City', true));
+  }
+}
+function setCity(slug) {
+  state.open = null;
+  if (slug === state.city) { renderCity(); return; }
+  state.city = slug;
+  try { localStorage.setItem('search.city', slug); } catch { /* private mode */ }
+  state.f = { ...state.f, extra: {} }; // a neighborhood from another city means nothing here
+  renderCity();
+  refresh();
 }
 
 // Filter pills. Each opens a dropdown: single-choice ones (When, Price, Setting) close on pick, multi-choice ones
@@ -247,8 +263,9 @@ function renderFinder() {
   // Phones: More sits beside the keywords box, so When, Event type and Ongoing keep one line.
   $('#f-more-m').innerHTML = desktop.matches ? '' : more;
   const pop = $('#f-pop');
-  pop.hidden = !state.open;
-  if (state.open) {
+  const fopen = state.open && state.open !== 'city';
+  pop.hidden = !fopen;
+  if (fopen) {
     pop.dataset.pop = state.open;
     pop.innerHTML = popBody(state.open);
     // Desktop: the dropdown opens under its pill; phones: full width under the row (CSS).
@@ -262,7 +279,8 @@ function renderFinder() {
   }
   const kw = $('#kw');
   // Desktop has room for examples; phones just say "Keywords".
-  kw.placeholder = desktop.matches ? 'Keywords, e.g. jazz, Roma, Tamayo' : 'Keywords';
+  const eg = { cdmx: 'jazz, Roma, Tamayo' }[state.city] || 'jazz, a venue, a neighborhood';
+  kw.placeholder = desktop.matches ? `Keywords, e.g. ${eg}` : 'Keywords';
   if (document.activeElement !== kw) kw.value = f.kw;
   $('#kw-x').hidden = !kw.value;
   // Filters an old link set that the finder has no control for (a neighborhood, a vibe): removable chips.
@@ -635,14 +653,16 @@ async function onAdd(key) {
 
 // ---------------------------------------------------------------- events
 document.addEventListener('click', async (ev) => {
-  if (state.open && !ev.target.closest('#f-pop, [data-pop]')) { state.open = null; renderFinder(); }
+  if (state.open && !ev.target.closest('#f-pop, [data-pop], #city-pop, #city-btn')) { state.open = null; renderFinder(); renderCity(); }
   const t = ev.target.closest('button, a');
   if (!t) return;
   if (t.dataset.open) { openDetail(t.dataset.open); return; }
   if (t.dataset.add) { onAdd(t.dataset.add); return; }
   if (t.dataset.link) { logAction('link', t.dataset.link); return; }
   // finder
-  if (t.dataset.pop) { state.open = state.open === t.dataset.pop ? null : t.dataset.pop; renderFinder(); return; }
+  if (t.id === 'city-btn') { state.open = state.open === 'city' ? null : 'city'; renderCity(); renderFinder(); return; }
+  if (t.dataset.city) { setCity(t.dataset.city); return; }
+  if (t.dataset.pop) { state.open = state.open === t.dataset.pop ? null : t.dataset.pop; renderFinder(); renderCity(); return; }
   if (t.hasAttribute('data-done')) { state.open = null; renderFinder(); return; }
   if (t.dataset.clear) {
     const c = t.dataset.clear;
@@ -717,7 +737,7 @@ $('#kw').addEventListener('input', () => {
 $('#sheet').addEventListener('close', () => { if (!desktop.matches) state.selected = null; });
 document.querySelectorAll('dialog').forEach((d) => d.addEventListener('click', (ev) => { if (ev.target === d) d.close(); }));
 window.addEventListener('popstate', route);
-document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && state.open) { state.open = null; renderFinder(); } });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && state.open) { state.open = null; renderFinder(); renderCity(); } });
 desktop.addEventListener('change', () => { renderFinder(); if (state.data) renderResults(); });
 
 function route() {

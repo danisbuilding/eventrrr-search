@@ -349,3 +349,14 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
   .fpill { padding: 0 9px 0 11px; }
   .kw { width: 300px; margin-left: 0; }
 }
+
+/* City menu (the "Mexico City ▾" above the headline) */
+.city-wrap { position: relative; display: inline-block; z-index: 6; }
+.city { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.city .chev-d { fill: none; stroke: currentColor; stroke-width: 2; transition: transform .15s; }
+.city.open .chev-d { transform: rotate(180deg); }
+.city:hover { color: var(--ink); }
+.city-pop { top: 34px; left: -6px !important; right: auto !important; width: 240px !important; }
+.mopt.soon { color: var(--muted); cursor: default; }
+.mopt.soon:hover { background: none; }
+.soon-tag { margin-left: auto; font-size: 11px; color: var(--muted); }

@@ -17,7 +17,7 @@ and see every matching event from Scout IQ by day; tap + to save one to your Eve
 | Task | How |
 | --- | --- |
 | Change the headlines | Edit `public/config/headlines.json` on github.com → Commit. Live in about a minute. |
-| New city | Nothing: any city with upcoming events in Scout IQ appears automatically. |
+| New city | In Scout IQ: `update cities set search_status = 'soon' where slug = 'nyc';` lists it as "Coming soon" in the city menu; `'live'` makes it selectable (it needs Scout sweeping it first). New York, Dallas and Lisbon are prepared as `hidden`. See `supabase/cities.sql`. |
 | Turn on saving | After the Bolt prompt has run, set `savingEnabled: true` in `public/config.js`. |
 | Rotate a key | Update the GitHub secret, then Actions → deploy → Run workflow. |
 | Change the parsing model | `OPENAI_MODEL` in `wrangler.toml`. |

@@ -294,7 +294,9 @@ base as (
          e.key, coalesce(nullif(t.title_en, ''), e.title) as title, coalesce(nullif(t.description_en, ''), e.description) as description,
          e.title as title_orig, e.description as desc_orig, (e.all_day and fl.time_found is null) as all_day, e.timezone, e.is_ongoing,
          case when pr.free then coalesce(nullif(t.price_en, ''), nullif(e.price_text, ''), 'Free')
-              when pr0.page_min > 0 then 'From MX$' || trim(to_char(pr0.page_min, 'FM999,999'))
+              when pr0.page_min > 0 then 'From ' || case c.currency when 'MXN' then 'MX$' when 'USD' then 'US$' when 'EUR' then '€'
+                                                             when 'GBP' then '£' else coalesce(c.currency || ' ', '') end
+                                        || trim(to_char(pr0.page_min, 'FM999,999'))
               when e.price_min > 0 then coalesce(nullif(t.price_en, ''), e.price_text)
               when search_fold(e.price_text) ~ '(ver enlace|consult|disponibilidad|taquilla|ticketmaster|eventbrite)' then 'Prices on the listing'
               else coalesce(nullif(t.price_en, ''), nullif(e.price_text, '')) end as price_text,
@@ -433,23 +435,23 @@ limit (select lim from p)
 $$;
 
 -- ---------------------------------------------------------------------------------------------------------
--- search_meta: what the API needs to understand a question (cities, profiles, categories) + data freshness
--- ---------------------------------------------------------------------------------------------------------
-drop function if exists search_meta();
-create function search_meta()
+-- search_meta: what the API needs to understand a question (cities, profiles, categories) + data freshness.
+-- Cities: those with search_status live (selectable) or soon (listed as "Coming soon"); hidden ones never.
+create or replace function search_meta()
 returns jsonb
 language sql stable security definer
 set search_path = public, extensions
 as $$
 select jsonb_build_object(
   'cities', coalesce((
-    select jsonb_agg(jsonb_build_object('slug', c.slug, 'name', c.name, 'timezone', c.timezone,
-                                        'currency', c.currency, 'upcoming', x.n) order by x.n desc)
+    select jsonb_agg(jsonb_build_object('slug', c.slug, 'name', c.name, 'country', c.country, 'timezone', c.timezone,
+                                        'currency', c.currency, 'status', c.search_status, 'upcoming', x.n)
+                     order by (c.search_status = 'live') desc, c.sort_order, c.name)
     from cities c
     join lateral (select count(*) as n from events e
                   where e.city_id = c.id and e.status in ('live', 'moved')
                     and coalesce(e.ends_at, e.starts_at) >= now()) x on true
-    where x.n > 0), '[]'::jsonb),
+    where c.search_status in ('live', 'soon')), '[]'::jsonb),
   'profiles', coalesce((
     select jsonb_agg(jsonb_build_object('slug', pr.slug, 'name', pr.display_name, 'persona', left(pr.persona, 240)) order by pr.sort_order, pr.slug)
     from profiles pr where pr.active), '[]'::jsonb),

@@ -34,9 +34,12 @@
     <main id="main" class="main">
       <!-- The finder: When and What always, More and a small keyword box (app.js renders the options) -->
       <section id="home" class="home" aria-labelledby="headline">
-        <button class="city" id="city-btn" type="button" aria-label="City">
-          <span id="city-name">Mexico City</span>
-        </button>
+        <div class="city-wrap">
+          <button class="city" id="city-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="City">
+            <span id="city-name">Mexico City</span><svg class="chev-d" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="pop city-pop" id="city-pop" role="menu" hidden></div>
+        </div>
         <h1 id="headline" class="headline">&nbsp;</h1>
         <div class="bar-wrap home-bar finder-wrap">
           <div class="tiger" id="tiger" aria-hidden="true">
