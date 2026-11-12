@@ -58,9 +58,13 @@ function whenLong(e) {
   const d = fmt(e.starts_at, e.timezone, { weekday: 'short', day: 'numeric', month: 'short' });
   return e.all_day ? `${d}, all day` : `${d}, ${fmt(e.starts_at, e.timezone, { hour: '2-digit', minute: '2-digit', hour12: false })}`;
 }
-function price(e) {
+function price(e, full = false) {
   if (e.is_free || e.price_min === 0) return 'Free';
-  if (e.price_text) { const t = e.price_text.split(/\n|;/)[0].trim(); return t.length > 40 ? t.slice(0, 38) + '…' : t; }
+  if (e.price_text) {
+    if (full) return e.price_text;
+    const t = e.price_text.split(/\n|;/)[0].trim(); // rows: first price line only
+    return t.length > 40 ? t.slice(0, 38) + '…' : t;
+  }
   if (e.price_min != null) return `$${Math.round(e.price_min)}${e.currency ? ' ' + e.currency : ''}`;
   return null;
 }
@@ -391,7 +395,7 @@ function addButton(key, saved) {
 // ---------------------------------------------------------------- details
 function detailHtml(e) {
   const saved = state.saved.has(e.key);
-  const p = price(e);
+  const p = price(e, true);
   const where = [e.venue, e.address || e.neighborhood].filter(Boolean);
   return `<div class="detail">
     <div class="grab"></div>
