@@ -271,3 +271,40 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
   .frow .fchip { flex: none; }
 }
 .frow .fchip { height: 32px; border-radius: 999px; padding-left: 12px; }
+
+/* The finder (filter-first page): a card the tiger peeks over, results right under it */
+.finder-wrap .tiger { bottom: auto; top: 1px; transform: translateY(-100%); }
+.finder { position: relative; z-index: 1; padding: 14px 16px; background: #fff; border: 1px solid var(--control); border-radius: 12px; box-shadow: 0 2px 8px rgba(28,25,23,.05); display: flex; flex-direction: column; gap: 12px; }
+.fline { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.flabel { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.fopts { display: flex; flex-wrap: wrap; gap: 6px; }
+.finder .fdates { margin: -4px 0 0; }
+.fbottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+#f-more-btn { flex: none; }
+.finder .fpanel { margin-top: 0; }
+.fextra { gap: 6px; }
+/* The keyword box is deliberately small: the filters do the narrowing, a keyword only adds to them. */
+.kw { position: relative; display: flex; align-items: center; width: 168px; height: 32px; padding: 0 6px 0 10px; gap: 6px; border: 1px solid var(--control); border-radius: 999px; background: #fff; }
+.kw:focus-within { border-color: var(--ink); }
+.kw svg { flex: none; fill: none; stroke: var(--muted); stroke-width: 1.6; }
+.kw input { flex: 1; min-width: 0; height: 30px; border: none; outline: none; background: transparent; font-size: 13px; color: var(--ink); }
+.kw input::-webkit-search-cancel-button { display: none; }
+.kw-x { flex: none; width: 22px; height: 22px; border: none; background: none; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+.kw-x svg { stroke: currentColor; stroke-width: 2; }
+.result-list { margin-top: 8px; transition: opacity .15s; }
+.result-list.dim { opacity: .45; }
+.count { justify-content: space-between; }
+.linkish { border: none; background: none; padding: 0; font-size: 12px; color: var(--muted); text-decoration: underline; }
+@media (max-width: 639px) {
+  /* one scrolling line per row on phones */
+  .fopts { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+  .fopts::-webkit-scrollbar { display: none; }
+  .fopts .fopt { flex: none; }
+  .kw { width: 140px; }
+  /* iOS zooms into inputs under 16px; scale a 16px input down instead so the box stays small */
+  .kw input { font-size: 16px; transform: scale(.8125); transform-origin: 0 50%; width: 123%; }
+}
+@media (min-width: 640px) {
+  .fline { flex-direction: row; align-items: flex-start; gap: 12px; }
+  .flabel { flex: none; width: 44px; padding-top: 9px; }
+}

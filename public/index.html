@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Eventrrr Search</title>
-  <meta name="description" content="Ask for what you're in the mood for and find events worth going to. Save any of them to your Eventrrr calendar.">
+  <meta name="description" content="Pick a day and what you're into, and find events worth going to. Save any of them to your Eventrrr calendar.">
   <meta name="theme-color" content="#FFFFFF">
   <meta property="og:title" content="Eventrrr Search">
   <meta property="og:description" content="Find events worth leaving the house for.">
@@ -32,13 +32,13 @@
 
   <div class="layout" id="layout">
     <main id="main" class="main">
-      <!-- Home -->
+      <!-- The finder: When and What always, More and a small keyword box (app.js renders the options) -->
       <section id="home" class="home" aria-labelledby="headline">
         <button class="city" id="city-btn" type="button" aria-label="City">
           <span id="city-name">Mexico City</span>
         </button>
         <h1 id="headline" class="headline">&nbsp;</h1>
-        <div class="bar-wrap home-bar">
+        <div class="bar-wrap home-bar finder-wrap">
           <div class="tiger" id="tiger" aria-hidden="true">
             <div class="tail-clip"><img class="tiger-tail" id="tiger-tail" src="/assets/tiger-tail.webp" alt="" width="160" height="462" hidden></div>
             <div class="tiger-body">
@@ -49,32 +49,27 @@
             </div>
           </div>
           <svg class="claws" aria-hidden="true" viewBox="0 0 300 60" preserveAspectRatio="none"><path d="M70 56L118 4"/><path d="M118 56L166 4"/><path d="M166 56L214 4"/></svg>
-          <form class="bar" id="home-form" role="search">
-            <label for="q-home" class="sr">Search events</label>
-            <svg class="i" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
-            <input id="q-home" name="q" type="search" autocomplete="off" enterkeyhint="search" placeholder="Something low-key this weekend…">
-            <button class="go" type="submit" aria-label="Search"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></button>
-          </form>
+          <div class="finder" id="finder" role="group" aria-label="Find events">
+            <div class="fline"><span class="flabel" id="lbl-when">When</span><div class="fopts" id="f-when" role="group" aria-labelledby="lbl-when"></div></div>
+            <div class="fdates" id="f-dates" hidden>
+              <input type="date" id="fd-from" aria-label="From"><span>to</span><input type="date" id="fd-to" aria-label="To">
+              <button type="button" class="fopt" id="fd-apply">Apply</button>
+            </div>
+            <div class="fline"><span class="flabel" id="lbl-what">What</span><div class="fopts" id="f-what" role="group" aria-labelledby="lbl-what"></div></div>
+            <div class="fbottom">
+              <button type="button" class="fpill" id="f-more-btn" aria-expanded="false" aria-controls="f-more">More filters</button>
+              <form class="kw" id="kw-form" role="search">
+                <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+                <label for="kw" class="sr">Keyword</label>
+                <input id="kw" name="kw" type="search" autocomplete="off" enterkeyhint="search" maxlength="60" placeholder="Keyword">
+                <button type="button" class="kw-x" id="kw-x" aria-label="Clear keyword" hidden><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+              </form>
+            </div>
+            <div class="fpanel" id="f-more" hidden></div>
+            <div class="frow fextra" id="f-extra" hidden></div>
+          </div>
         </div>
-        <div class="label">Try</div>
-        <div class="chips" id="suggestions"></div>
-        <div class="picks-head"><span class="label">Top picks this week</span><a href="?all=1" id="see-all">See all</a></div>
-        <div id="picks" class="picks" aria-live="polite"></div>
-      </section>
-
-      <!-- Results -->
-      <section id="results" class="results" hidden>
-        <div class="bar-wrap results-bar">
-          <span class="bar-avatar"><img src="/assets/tiger-avatar.webp" alt="" width="48" height="48"></span>
-          <form class="bar" id="results-form" role="search">
-            <label for="q-results" class="sr">Search events</label>
-            <input id="q-results" name="q" type="search" autocomplete="off" enterkeyhint="search">
-            <button class="clear" type="button" id="clear-btn" aria-label="Clear search"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
-            <button class="go" type="submit" aria-label="Search"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></button>
-          </form>
-        </div>
-        <div id="searching" class="searching"></div>
-        <div id="result-list" aria-live="polite"></div>
+        <div id="result-list" class="result-list" aria-live="polite"></div>
       </section>
     </main>
 

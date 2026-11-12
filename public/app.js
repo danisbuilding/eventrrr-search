@@ -40,7 +40,7 @@ function logAction(action, key) {
   const qid = state.data && state.data.query_id;
   try { navigator.sendBeacon('/api/log', new Blob([JSON.stringify({ query_id: qid, action, event_key: key })], { type: 'application/json' })); } catch { /* ignore */ }
 }
-const findEvent = (key) => [...(state.data?.results || []), ...(state.data?.more || []), ...state.picks].find((e) => e.key === key);
+const findEvent = (key) => [...(state.data?.results || []), ...(state.data?.more || [])].find((e) => e.key === key);
 
 // ---------------------------------------------------------------- formatting
 const fmt = (iso, tz, opts) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, ...opts }).format(new Date(iso));
@@ -84,25 +84,88 @@ const plus = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"
 const check = '<svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
 const xIcon = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>';
 
-// ---------------------------------------------------------------- home
+// ---------------------------------------------------------------- the finder (filter-first since 2026-11-12)
+// People pick When and What (Eventrrr's categories), optionally More (price, time of day, setting, kids, ongoing) and a
+// keyword. Every change re-runs the search at once; no AI reads anything, so it's fast, free and predictable.
+// The whole state lives in the URL (shareable, back button works). Old ?q= links are read with the keyword rules.
+const CATS = ['Music', 'Clubs & Parties', 'Art & Exhibitions', 'Food & Drink', 'Creativity & Crafts', 'Talks & Learning',
+  'Social & Networking', 'Film & Performance', 'Wellness & Sport', 'Markets & Design', 'Tech', 'Other'];
+const WHEN = [['any', 'Next 2 weeks'], ['today', 'Today'], ['tonight', 'Tonight'], ['tomorrow', 'Tomorrow'],
+  ['weekend', 'This weekend'], ['nextweek', 'Next week'], ['custom', 'Pick dates']];
+const TIME_OPTS = [['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening'], ['late', 'Late night']];
+const EXTRA_FIELDS = ['profile', 'neighborhood', 'venue_types', 'activities', 'max_price'];
+const blank = () => ({ when: 'any', from: '', to: '', cats: [], kw: '', price: '', times: [], setting: '', kids: false, hideOngoing: false, extra: {} });
+state.f = blank();
+state.moreOpen = false;
+
+function fromURL() {
+  const p = new URLSearchParams(location.search);
+  const f = blank();
+  const w = p.get('when');
+  if (w && WHEN.some(([id]) => id === w)) f.when = w;
+  if (f.when === 'custom') { f.from = p.get('from') || ''; f.to = p.get('to') || ''; if (!f.from || !f.to) f.when = 'any'; }
+  const known = state.meta?.categories?.length ? state.meta.categories : CATS;
+  f.cats = p.getAll('what').filter((c) => known.includes(c));
+  f.kw = (p.get('kw') || '').slice(0, 60);
+  f.price = ['free', 'paid'].includes(p.get('price')) ? p.get('price') : '';
+  f.times = p.getAll('time').filter((t) => TIME_OPTS.some(([k]) => k === t));
+  f.setting = ['indoor', 'outdoor'].includes(p.get('setting')) ? p.get('setting') : '';
+  f.kids = p.get('kids') === '1';
+  f.hideOngoing = p.get('ongoing') === 'hide';
+  return f;
+}
+function toURL(f) {
+  const p = new URLSearchParams();
+  if (f.when !== 'any') p.set('when', f.when);
+  if (f.when === 'custom') { p.set('from', f.from); p.set('to', f.to); }
+  f.cats.forEach((c) => p.append('what', c));
+  if (f.kw) p.set('kw', f.kw);
+  if (f.price) p.set('price', f.price);
+  f.times.forEach((t) => p.append('time', t));
+  if (f.setting) p.set('setting', f.setting);
+  if (f.kids) p.set('kids', '1');
+  if (f.hideOngoing) p.set('ongoing', 'hide');
+  if (TEST) p.set('test', '1');
+  const s = p.toString();
+  return s ? `?${s}` : location.pathname;
+}
+function requestFilters(f) {
+  return {
+    ...(f.when === 'custom' ? { from: `${f.from}T00:00`, to: `${f.to}T23:59` } : { when: f.when }),
+    categories: f.cats, text: f.kw || null, free: f.price === 'free', paid: f.price === 'paid', times: f.times,
+    outdoor: f.setting === 'outdoor', indoor: f.setting === 'indoor', kids: f.kids, hide_ongoing: f.hideOngoing, ...f.extra,
+  };
+}
+// The server's filters (from an old ?q= link) → the finder's state.
+function fromServer(sf, d) {
+  const f = blank();
+  const o = (d.when_options || []).find((x) => x.from === sf.from && x.to === sf.to);
+  if (o) f.when = o.id; else { f.when = 'custom'; f.from = sf.from.slice(0, 10); f.to = sf.to.slice(0, 10); }
+  f.cats = sf.categories || [];
+  f.kw = sf.text || '';
+  f.price = sf.free ? 'free' : sf.paid ? 'paid' : '';
+  f.times = sf.times || [];
+  f.setting = sf.outdoor ? 'outdoor' : sf.indoor ? 'indoor' : '';
+  f.kids = !!sf.kids; f.hideOngoing = !!sf.hide_ongoing;
+  for (const k of EXTRA_FIELDS) { const v = sf[k]; if (v && !(Array.isArray(v) && !v.length)) f.extra[k] = v; }
+  return f;
+}
+
 async function initHome() {
-  // Picks, headline and meta load in parallel; picks don't wait on the others.
   if (!state.city) state.city = 'cdmx';
-  const picks = loadPicks();
-  $('#suggestions').innerHTML = (C.suggestions || []).map((s) => `<a class="chip" href="?q=${encodeURIComponent(s)}">${esc(s)}</a>`).join('');
-  const headline = fetch('/config/headlines.json').then((r) => r.json()).then((h) => {
+  fetch('/config/headlines.json').then((r) => r.json()).then((h) => {
     const list = (h.headlines || []).filter(Boolean);
     $('#headline').textContent = list.length ? list[Math.floor(Math.random() * list.length)] : 'What are you in the mood for?';
   }).catch(() => { $('#headline').textContent = 'What are you in the mood for?'; });
-  const meta = api('/api/meta').then((m) => {
+  api('/api/meta').then((m) => {
     state.meta = m;
     const cities = m.cities || [];
     const before = state.city;
     if (!cities.find((c) => c.slug === state.city)) state.city = cities[0]?.slug || 'cdmx';
     renderCity();
-    if (state.city !== before) loadPicks();
+    renderFinder();
+    if (state.city !== before) refresh({ push: false });
   }).catch(() => { /* meta is optional */ });
-  await Promise.all([picks, headline, meta]);
 }
 function renderCity() {
   const cities = state.meta?.cities || [];
@@ -113,38 +176,98 @@ function renderCity() {
     const i = cities.findIndex((c) => c.slug === state.city);
     state.city = cities[(i + 1) % cities.length].slug;
     localStorage.setItem('search.city', state.city);
-    renderCity(); loadPicks();
+    renderCity(); refresh({ push: false });
   } : null;
   btn.title = cities.length > 1 ? 'Change city' : '';
 }
-async function loadPicks() {
-  const box = $('#picks');
-  box.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
-  try {
-    const r = await api('/api/search', { filters: { to: null }, city: state.city, test: TEST });
-    state.picks = (r.results || []).filter((e) => !e.ongoing).slice(0, 3);
-    if (state.picks.length < 3) state.picks.push(...(r.results || []).filter((e) => e.ongoing).slice(0, 3 - state.picks.length));
-    box.innerHTML = state.picks.map((e) => `
-      <button class="pick" type="button" data-open="${esc(e.key)}">
-        <span class="when">${esc(fmt(e.starts_at, e.timezone, { weekday: 'short', day: 'numeric' }).toUpperCase())}\n${esc(whenCol(e).replace('\n', ' '))}</span>
-        <span><span class="t" style="display:block">${esc(e.title)}</span><span class="m" style="display:block">${esc(metaLine(e))}</span></span>
-        <svg class="chev" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>
-      </button>`).join('') || '<p class="foot">Fresh picks are on their way.</p>';
-  } catch { box.innerHTML = '<p class="foot">Picks will be back in a moment.</p>'; }
+
+function opt(attr, val, label, on) {
+  return `<button type="button" class="fopt${on ? ' on' : ''}" data-${attr}="${esc(val)}" aria-pressed="${!!on}">${esc(label)}</button>`;
+}
+function moreCount(f) { return [f.price, f.times.length, f.setting, f.kids, f.hideOngoing].filter(Boolean).length; }
+function renderFinder() {
+  const f = state.f;
+  $('#f-when').innerHTML = WHEN.map(([id, l]) => opt('when', id, l, f.when === id)).join('');
+  $('#f-dates').hidden = f.when !== 'custom';
+  if (f.when === 'custom') { $('#fd-from').value = f.from; $('#fd-to').value = f.to; }
+  const cats = state.meta?.categories?.length ? state.meta.categories : CATS;
+  $('#f-what').innerHTML = opt('cat', '', 'Anything', !f.cats.length) + cats.map((c) => opt('cat', c, c, f.cats.includes(c))).join('');
+  const n = moreCount(f);
+  const mb = $('#f-more-btn');
+  mb.innerHTML = `${n ? `More filters · ${n}` : 'More filters'}<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
+  mb.classList.toggle('on', n > 0); mb.classList.toggle('open', state.moreOpen);
+  mb.setAttribute('aria-expanded', state.moreOpen);
+  const panel = $('#f-more');
+  panel.hidden = !state.moreOpen;
+  if (state.moreOpen) panel.innerHTML = `
+    <div class="fgroup"><div class="label">Price</div>${opt('price', '', 'Any', !f.price)}${opt('price', 'free', 'Free', f.price === 'free')}${opt('price', 'paid', 'Paid', f.price === 'paid')}</div>
+    <div class="fgroup"><div class="label">Time of day</div>${opt('time', '', 'Any time', !f.times.length)}${TIME_OPTS.map(([k, l]) => opt('time', k, l, f.times.includes(k))).join('')}
+      ${f.times.length ? '<p class="fnote">Events without a start time are left out.</p>' : ''}</div>
+    <div class="fgroup"><div class="label">Setting</div>${opt('setting', '', 'Any', !f.setting)}${opt('setting', 'indoor', 'Indoors', f.setting === 'indoor')}${opt('setting', 'outdoor', 'Outdoors', f.setting === 'outdoor')}</div>
+    <div class="fgroup"><div class="label">Show</div>${opt('toggle', 'kids', 'Kid-friendly only', f.kids)}${opt('toggle', 'hideOngoing', 'Hide ongoing exhibitions', f.hideOngoing)}</div>`;
+  // Phones show each row as one scrolling line: keep the picked option in view.
+  for (const row of [$('#f-when'), $('#f-what')]) {
+    const on = row.querySelector('.fopt.on');
+    if (on && row.scrollWidth > row.clientWidth) {
+      const l = on.offsetLeft - row.offsetLeft, r = l + on.offsetWidth;
+      if (l < row.scrollLeft || r > row.scrollLeft + row.clientWidth) row.scrollLeft = Math.max(0, l - 24);
+    }
+  }
+  const kw = $('#kw');
+  if (document.activeElement !== kw) kw.value = f.kw;
+  $('#kw-x').hidden = !kw.value;
+  // Filters an old link set that the finder has no control for (a neighborhood, a vibe): removable chips.
+  const ex = Object.entries(f.extra);
+  $('#f-extra').innerHTML = ex.map(([k, v]) => `<span class="fchip">${esc(extraLabel(k, v))}<button type="button" data-unextra="${k}" aria-label="Remove">${xIcon.replace(/16/g, '10')}</button></span>`).join('');
+  $('#f-extra').hidden = !ex.length;
+}
+function extraLabel(k, v) {
+  if (k === 'max_price') return `Under $${v}`;
+  if (k === 'profile') return (state.meta?.profiles || []).find((p) => p.slug === v)?.name || v;
+  if (Array.isArray(v)) return v.map((x) => String(x).replace(/_/g, ' ')).join(', ');
+  return String(v).replace(/\b\p{L}/gu, (m) => m.toUpperCase());
+}
+function setF(patch, opts) {
+  state.f = { ...state.f, ...patch };
+  refresh(opts);
 }
 
-// ---------------------------------------------------------------- search
-function go(q, { push = true } = {}) {
-  const url = new URL(location.href);
-  url.search = q ? `?q=${encodeURIComponent(q)}` : '?all=1';
-  if (push) history.pushState({}, '', url); else history.replaceState({}, '', url);
-  route();
-}
-// Start the request while the tiger animates, so the animation costs no extra wait.
-let pending = null;
-function prefetch(q) {
-  pending = { q, city: state.city, promise: api('/api/search', { q, city: state.city, test: TEST }) };
-  pending.promise.catch(() => {});
+// One request at a time wins: a newer tap makes older answers irrelevant.
+let seq = 0;
+async function refresh({ push = true, legacyQ = null } = {}) {
+  if (!legacyQ) {
+    const url = toURL(state.f);
+    if (url !== location.pathname + location.search) (push ? history.pushState : history.replaceState).call(history, {}, '', url);
+  }
+  renderFinder();
+  const my = ++seq;
+  const list = $('#result-list');
+  list.classList.add('dim');
+  state.selected = null; state.ongoingOpen = false;
+  let stop = null;
+  // A tiger loader only when the answer is slow (or on the very first load); quick answers just swap in.
+  const lt = setTimeout(() => { if (my === seq) stop = startLoader(); }, state.data ? 700 : 0);
+  try {
+    const body = legacyQ
+      ? { q: legacyQ, parse: 'keywords', city: state.city, test: TEST }
+      : { browse: true, filters: requestFilters(state.f), city: state.city, test: TEST };
+    const d = await api('/api/search', body);
+    if (my !== seq) return;
+    state.data = d;
+    if (legacyQ) {
+      state.f = fromServer(d.filters, d);
+      history.replaceState({}, '', toURL(state.f));
+      renderFinder();
+    }
+    clearTimeout(lt); if (stop) stop();
+    renderResults();
+  } catch (e) {
+    if (my !== seq) return;
+    clearTimeout(lt); if (stop) stop();
+    list.innerHTML = `<div class="empty"><p>${esc(e.message)}</p><button class="toggle" type="button" id="retry">Try again</button></div>`;
+  } finally {
+    if (my === seq) list.classList.remove('dim');
+  }
 }
 
 // ---------------------------------------------------------------- tiger animations
@@ -173,27 +296,6 @@ function playSearchAnimation() {
   return new Promise((res) => setTimeout(() => { wrap.classList.remove(`play-${name}`); res(); }, ANIM_MS[name]));
 }
 
-async function runSearch({ q, filters }) {
-  $('#home').hidden = true;
-  $('#results').hidden = false;
-  $('#q-results').value = q || '';
-  state.showMore = false; state.ongoingOpen = false; state.selected = null; state.openFilter = null;
-  if (!filters) $('#searching').innerHTML = ''; // a new question; re-filtering keeps the row in place
-  setPane(false);
-  window.scrollTo(0, 0);
-  const stopLoader = startLoader();
-  try {
-    const pre = !filters && pending && pending.q === q && pending.city === state.city ? pending.promise : null;
-    pending = null;
-    state.data = await (pre || api('/api/search', { q, filters, city: state.city, test: TEST }));
-    stopLoader();
-    renderResults();
-  } catch (e) {
-    stopLoader();
-    $('#result-list').innerHTML = `<div class="empty"><p>${esc(e.message)}</p><button class="toggle" type="button" id="retry">Try again</button></div>`;
-    $('#retry').onclick = () => runSearch({ q, filters });
-  }
-}
 // ---------------------------------------------------------------- loading state
 // A random tiger loader (Pondering / Researching / Eye of the Tiger) cycles its frames until results arrive.
 // It fades in after a short delay, so fast responses don't flash it.
@@ -227,117 +329,15 @@ function startLoader() {
   if (!still && imgs.length > 1) tick();
   return () => clearTimeout(timer);
 }
-function removeChip(field, value) {
-  const f = { ...state.data.filters };
-  if (field === 'when') { f.from = null; f.to = null; }
-  else if (field === 'category') f.categories = (f.categories || []).filter((c) => c !== value);
-  else if (Array.isArray(f[field])) f[field] = f[field].filter((c) => c !== value);
-  else if (typeof f[field] === 'boolean') f[field] = false;
-  else f[field] = null;
-  if (field === 'text') f.topic = null;
-  runSearch({ q: $('#q-results').value, filters: f });
-}
-
-// ---------------------------------------------------------------- filters
-// One row under the search bar: When and Theme always; Setting, Time of day, Kid-friendly and Hide ongoing inline on
-// wide screens and under "More" on phones. A typed question sets them too (the AI's reading shows as these filters).
-// Changing one re-runs the search without the AI: fast and free.
-const TIME_OPTS = [['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening'], ['late', 'Late night']];
-const ROW_FIELDS = new Set(['when', 'category', 'outdoor', 'indoor', 'times', 'kids', 'hide_ongoing', 'free', 'paid', 'city']);
-function whenId(d) {
-  const f = d.filters || {};
-  const o = (d.when_options || []).find((x) => x.from === f.from && x.to === f.to);
-  return o ? o.id : 'custom';
-}
-function fpill(id, label, on, cls = '') {
-  const open = state.openFilter === id;
-  return `<button type="button" class="fpill${on ? ' on' : ''}${open ? ' open' : ''}${cls ? ' ' + cls : ''}" data-fpill="${id}" aria-expanded="${open}">${esc(label)}<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>`;
-}
-function ftoggle(field, label, on) {
-  return `<button type="button" class="fpill sec${on ? ' on' : ''}" data-ftoggle="${field}" aria-pressed="${!!on}">${esc(label)}</button>`;
-}
-function fopt(set, label, on) {
-  return `<button type="button" class="fopt${on ? ' on' : ''}" data-fset="${esc(set)}" aria-pressed="${!!on}">${esc(label)}</button>`;
-}
-function renderFilters() {
-  const d = state.data;
-  if (!d || !d.filters) { $('#searching').innerHTML = ''; return; }
-  const f = d.filters;
-  const wid = whenId(d);
-  const whenLabel = wid === 'any' ? 'Any time' : wid === 'custom' ? (d.when_label || 'Dates') : d.when_options.find((o) => o.id === wid).label;
-  const cats = f.categories || [];
-  const setting = f.outdoor ? 'Outdoors' : f.indoor ? 'Indoors' : '';
-  const times = f.times || [];
-  const timeLabel = times.map((t) => (TIME_OPTS.find((o) => o[0] === t) || [, t])[1]).join(', ');
-  const price = f.free ? 'Free' : f.paid ? 'Paid' : '';
-  const nMore = [setting, timeLabel, price, f.kids, f.hide_ongoing].filter(Boolean).length;
-  const extra = (d.chips || []).map((c, i) => [c, i]).filter(([c]) => !ROW_FIELDS.has(c.field));
-  let html = `<div class="frow" role="toolbar" aria-label="Filters">
-    ${fpill('when', whenLabel, wid !== 'any')}
-    ${fpill('theme', cats.length ? cats.join(', ') : 'Theme', cats.length > 0)}
-    ${fpill('setting', setting || 'Setting', !!setting, 'sec')}
-    ${fpill('time', timeLabel || 'Time of day', times.length > 0, 'sec')}
-    ${fpill('price', price || 'Price', !!price, 'sec')}
-    ${ftoggle('kids', 'Kid-friendly', f.kids)}
-    ${ftoggle('hide_ongoing', 'Hide ongoing', f.hide_ongoing)}
-    ${fpill('more', nMore ? `More · ${nMore}` : 'More', nMore > 0, 'fmore')}
-    ${extra.map(([c, i]) => `<span class="fchip">${esc(c.label)}<button type="button" data-chip="${i}" aria-label="Remove ${esc(c.label)}">${xIcon.replace('16', '10').replace('16', '10')}</button></span>`).join('')}
-  </div>`;
-  const o = state.openFilter;
-  if (o) {
-    let body = '';
-    const whenOpts = () => (d.when_options || []).map((x) => fopt(`when:${x.id}`, x.id === 'any' ? 'Any time' : x.label, wid === x.id)).join('')
-      + `<div class="fdates"><input type="date" id="fd-from" aria-label="From" value="${esc(f.from.slice(0, 10))}"><span>to</span><input type="date" id="fd-to" aria-label="To" value="${esc(f.to.slice(0, 10))}">${fopt('when:custom', 'Apply', wid === 'custom')}</div>`;
-    const settingOpts = () => fopt('setting:any', 'Any', !setting) + fopt('setting:outdoor', 'Outdoors', !!f.outdoor) + fopt('setting:indoor', 'Indoors', !!f.indoor);
-    const priceOpts = () => fopt('price:any', 'Any', !price) + fopt('price:free', 'Free', !!f.free) + fopt('price:paid', 'Paid', !!f.paid);
-    const timeOpts = () => fopt('time:any', 'Any time of day', !times.length) + TIME_OPTS.map(([k, l]) => fopt(`time:${k}`, l, times.includes(k))).join('');
-    if (o === 'when') body = whenOpts();
-    else if (o === 'theme') body = fopt('theme:any', 'Any theme', !cats.length) + (d.categories || []).map((c) => fopt(`theme:${c}`, c, cats.includes(c))).join('');
-    else if (o === 'setting') body = settingOpts();
-    else if (o === 'price') body = priceOpts();
-    else if (o === 'time') body = timeOpts() + '<p class="fnote">Events without a start time are left out.</p>';
-    else if (o === 'more') body = `<div class="fgroup"><div class="label">Setting</div>${settingOpts()}</div>
-      <div class="fgroup"><div class="label">Time of day</div>${timeOpts()}</div>
-      <div class="fgroup"><div class="label">Price</div>${priceOpts()}</div>
-      <div class="fgroup"><div class="label">Show</div>${fopt('toggle:kids', 'Kid-friendly only', f.kids)}${fopt('toggle:hide_ongoing', 'Hide ongoing exhibitions', f.hide_ongoing)}</div>`;
-    html += `<div class="fpanel" data-panel="${o}">${body}</div>`;
-  }
-  $('#searching').innerHTML = html;
-}
-function applyFilters(patch) {
-  const f = { ...state.data.filters, ...patch };
-  state.openFilter = null;
-  runSearch({ q: $('#q-results').value, filters: f });
-}
-function onFilterSet(v) {
-  const [k, ...rest] = v.split(':');
-  const val = rest.join(':');
-  const f = state.data.filters;
-  if (k === 'when') {
-    if (val === 'custom') {
-      const a = $('#fd-from')?.value, b = $('#fd-to')?.value;
-      if (!a || !b) return;
-      return applyFilters({ from: `${a <= b ? a : b}T00:00`, to: `${a <= b ? b : a}T23:59` });
-    }
-    const o = (state.data.when_options || []).find((x) => x.id === val);
-    if (o) applyFilters({ from: o.from, to: o.to });
-  } else if (k === 'theme') {
-    const cats = f.categories || [];
-    applyFilters({ categories: val === 'any' ? [] : cats.includes(val) ? cats.filter((c) => c !== val) : [...cats, val], venue_types: [], activities: [] });
-  } else if (k === 'setting') applyFilters({ outdoor: val === 'outdoor', indoor: val === 'indoor' });
-  else if (k === 'price') applyFilters({ free: val === 'free', paid: val === 'paid', max_price: null });
-  else if (k === 'time') {
-    const t = f.times || [];
-    applyFilters({ times: val === 'any' ? [] : t.includes(val) ? t.filter((x) => x !== val) : [...t, val] });
-  } else if (k === 'toggle') applyFilters({ [val]: !f[val] });
-}
-
 function renderResults() {
   const d = state.data;
-  renderFilters();
-  const list = state.showMore ? [...d.results, ...d.more] : d.results;
+  const list = [...d.results, ...(d.more || [])];
+  const f = state.f;
+  const anySet = f.when !== 'any' || f.cats.length || f.kw || moreCount(f) || Object.keys(f.extra).length;
   if (!list.length) {
-    $('#result-list').innerHTML = `<div class="empty"><img src="/assets/tiger-avatar.webp" alt="" width="140" height="140"><p>Nothing found for that yet. Try fewer words, another day, or remove a filter above.</p></div>`;
+    $('#result-list').innerHTML = `<div class="empty"><img src="/assets/tiger-avatar.webp" alt="" width="140" height="140">
+      <p>Nothing matches all of these yet. Try another day or fewer filters.</p>
+      ${anySet ? '<button class="toggle" type="button" id="clear-all">Clear all filters</button>' : ''}</div>`;
     return;
   }
   const ongoing = list.filter((e) => e.ongoing);
@@ -349,20 +349,16 @@ function renderResults() {
     days[days.length - 1].items.push(e);
   }
   const shownOngoing = state.ongoingOpen ? ongoing : ongoing.slice(0, 4);
-  let html = `<div class="count"><span><b>${list.length}</b> event${list.length === 1 ? '' : 's'}</span></div>`;
-  if (d.relaxed) {
-    const what = (d.relaxed_by || []).length ? listWords(d.relaxed_by) : 'matched those words';
-    html += `<p class="note">Nothing ${esc(what)} ${d.when_label ? `for ${esc(d.when_label.toLowerCase().startsWith('tonight') ? 'tonight' : d.when_label)}` : 'yet'}, so here are the closest matches for those dates.</p>`;
-  } else if (d.unclear) html += `<p class="note">We couldn't tell what you're looking for, so here's what's coming up. Try a kind of event, a day or a place.</p>`;
-  else if (d.expanded) html += `<p class="note">Not much has been picked for this yet, so here's everything we found.</p>`;
-  // Dated events first; long-running exhibitions after them, unless they're all there is.
+  let html = `<div class="count"><span><b>${list.length}</b> event${list.length === 1 ? '' : 's'}</span>${anySet ? '<button class="linkish" type="button" id="clear-all">Clear filters</button>' : ''}</div>`;
+  // The keyword matched nothing: it was dropped, everything else still applies.
+  if (d.relaxed && f.kw) html += `<p class="note">No events mention “${esc(f.kw)}” with these filters, so here's everything else that fits.</p>`;
+  // Dated events first, by day; long-running exhibitions after them, unless they're all there is.
   for (const day of days) html += section(dayLabel(day.items[0]), day.items, '');
   if (ongoing.length) {
     html += section(days.length ? 'Also on' : 'Ongoing', shownOngoing, '');
     if (ongoing.length > 4 && !state.ongoingOpen) html += `<button class="toggle" type="button" id="ongoing-more">Show ${ongoing.length - 4} more ongoing</button>`;
   }
-  if (!state.showMore && d.more.length) html += `<button class="more-btn" type="button" id="more-btn">Show ${d.more.length} more</button>`;
-  html += `<p class="foot">Not quite it? Try “cheaper”, “closer to Roma” or “just Sunday”.${d.updated_at ? `<br>Events updated ${esc(fmt(d.updated_at, d.timezone, { day: 'numeric', month: 'short' }))}.` : ''}</p>`;
+  if (d.updated_at) html += `<p class="foot">Events updated ${esc(fmt(d.updated_at, d.timezone, { day: 'numeric', month: 'short' }))}.</p>`;
   $('#result-list').innerHTML = html;
   const first = dated[0] || ongoing[0];
   if (desktop.matches && first) openDetail(state.selected && findEvent(state.selected) ? state.selected : first.key, { quiet: true });
@@ -429,7 +425,7 @@ function openDetail(key, { quiet } = {}) {
   document.querySelectorAll('.row.sel').forEach((r) => r.classList.remove('sel'));
   document.querySelector(`.row[data-row="${CSS.escape(key)}"]`)?.classList.add('sel');
   if (!quiet) logAction('open', key);
-  if (desktop.matches && !$('#results').hidden) {
+  if (desktop.matches) {
     $('#pane').innerHTML = detailHtml(e);
     setPane(true);
   } else {
@@ -594,12 +590,37 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.open) { openDetail(t.dataset.open); return; }
   if (t.dataset.add) { onAdd(t.dataset.add); return; }
   if (t.dataset.link) { logAction('link', t.dataset.link); return; }
-  if (t.dataset.chip) { const c = state.data.chips[+t.dataset.chip]; removeChip(c.field, c.value); return; }
-  if (t.dataset.fpill) { state.openFilter = state.openFilter === t.dataset.fpill ? null : t.dataset.fpill; renderFilters(); return; }
-  if (t.dataset.fset) { onFilterSet(t.dataset.fset); return; }
-  if (t.dataset.ftoggle) { applyFilters({ [t.dataset.ftoggle]: !state.data.filters[t.dataset.ftoggle] }); return; }
+  // finder
+  if (t.dataset.when !== undefined) {
+    if (t.dataset.when === 'custom') {
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: state.data?.timezone || 'America/Mexico_City' });
+      state.f = { ...state.f, when: 'custom', from: state.f.from || today, to: state.f.to || today };
+      renderFinder(); $('#fd-from').focus(); return;
+    }
+    setF({ when: t.dataset.when, from: '', to: '' }); return;
+  }
+  if (t.dataset.cat !== undefined) {
+    const c = t.dataset.cat, cats = state.f.cats;
+    setF({ cats: !c ? [] : cats.includes(c) ? cats.filter((x) => x !== c) : [...cats, c] }); return;
+  }
+  if (t.dataset.price !== undefined) { setF({ price: t.dataset.price }); return; }
+  if (t.dataset.setting !== undefined) { setF({ setting: t.dataset.setting }); return; }
+  if (t.dataset.time !== undefined) {
+    const k = t.dataset.time, ts = state.f.times;
+    setF({ times: !k ? [] : ts.includes(k) ? ts.filter((x) => x !== k) : [...ts, k] }); return;
+  }
+  if (t.dataset.toggle) { setF({ [t.dataset.toggle]: !state.f[t.dataset.toggle] }); return; }
+  if (t.dataset.unextra) { const ex = { ...state.f.extra }; delete ex[t.dataset.unextra]; setF({ extra: ex }); return; }
+  if (t.id === 'f-more-btn') { state.moreOpen = !state.moreOpen; renderFinder(); return; }
+  if (t.id === 'fd-apply') {
+    const a = $('#fd-from').value, b = $('#fd-to').value;
+    if (a && b) setF({ when: 'custom', from: a <= b ? a : b, to: a <= b ? b : a });
+    return;
+  }
+  if (t.id === 'kw-x') { $('#kw').value = ''; if (state.f.kw) setF({ kw: '' }); else renderFinder(); return; }
+  if (t.id === 'clear-all') { state.f = blank(); state.moreOpen = false; refresh(); return; }
+  if (t.id === 'retry') { refresh({ push: false }); return; }
   if (t.hasAttribute('data-close')) { t.closest('dialog')?.close(); if (!t.closest('dialog')) setPane(false); return; }
-  if (t.id === 'more-btn') { state.showMore = true; logAction('more', null); renderResults(); return; }
   if (t.id === 'ongoing-more') { state.ongoingOpen = true; renderResults(); return; }
   if (t.id === 'signin-btn') { openSignin(null); return; }
   if (t.id === 'avatar-btn') {
@@ -618,34 +639,33 @@ document.addEventListener('click', async (ev) => {
 document.addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const f = ev.target;
-  if (f.id === 'home-form' || f.id === 'results-form') {
-    const q = f.q.value.trim();
-    if (!q) return;
-    f.q.blur();
-    prefetch(q);
-    if (f.id === 'home-form') await playSearchAnimation();
-    else { const a = $('.bar-avatar'); a.classList.remove('nudge'); void a.offsetWidth; a.classList.add('nudge'); }
-    go(q);
+  if (f.id === 'kw-form') {
+    clearTimeout(kwTimer);
+    const kw = $('#kw').value.trim().slice(0, 60);
+    $('#kw').blur();
+    playSearchAnimation();
+    if (kw !== state.f.kw) setF({ kw });
   } else if (f.id === 'auth-form') {
     submitAuth();
   }
 });
-$('#clear-btn').addEventListener('click', () => { $('#q-results').value = ''; $('#q-results').focus(); });
+// Typing pauses count as a search too (no need to press Enter).
+let kwTimer;
+$('#kw').addEventListener('input', () => {
+  $('#kw-x').hidden = !$('#kw').value;
+  clearTimeout(kwTimer);
+  kwTimer = setTimeout(() => { const kw = $('#kw').value.trim().slice(0, 60); if (kw !== state.f.kw) setF({ kw }, { push: false }); }, 800);
+});
 $('#sheet').addEventListener('close', () => { if (!desktop.matches) state.selected = null; });
 document.querySelectorAll('dialog').forEach((d) => d.addEventListener('click', (ev) => { if (ev.target === d) d.close(); }));
 window.addEventListener('popstate', route);
-desktop.addEventListener('change', () => { if (state.data && !$('#results').hidden) renderResults(); });
+desktop.addEventListener('change', () => { if (state.data) renderResults(); });
 
 function route() {
   const p = new URLSearchParams(location.search);
   const q = p.get('q');
-  if (q) runSearch({ q });
-  else if (p.get('all')) runSearch({ q: '', filters: { to: null } });
-  else {
-    $('#results').hidden = true;
-    $('#home').hidden = false;
-    setPane(false);
-  }
+  if (q) refresh({ legacyQ: q.slice(0, 300) });
+  else { state.f = fromURL(); refresh({ push: false }); }
 }
 
 initHome();
