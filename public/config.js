@@ -14,6 +14,7 @@ window.SEARCH_CONFIG = {
     { label: "Pondering", frames: [["pondering-1", 1100], ["pondering-2", 1100]] },
     { label: "Researching", frames: [["researching-1", 900], ["researching-2", 170], ["researching-3", 190], ["researching-4", 240]] },
     { label: "Searching with the Eye of the Tiger", frames: [["tiger-1", 300], ["tiger-2", 300]] },
+    { label: "Connecting the dots", frames: [["connecting-1", 900], ["connecting-2", 900], ["connecting-3", 900]] },
   ],
   suggestions: ["Free this weekend", "Tonight", "Date night", "Live music", "Near Roma Norte"],
 };
