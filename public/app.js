@@ -60,7 +60,7 @@ function whenLong(e) {
 }
 function price(e) {
   if (e.is_free || e.price_min === 0) return 'Free';
-  if (e.price_text) return e.price_text;
+  if (e.price_text) { const t = e.price_text.split(/\n|;/)[0].trim(); return t.length > 40 ? t.slice(0, 38) + '…' : t; }
   if (e.price_min != null) return `$${Math.round(e.price_min)}${e.currency ? ' ' + e.currency : ''}`;
   return null;
 }
