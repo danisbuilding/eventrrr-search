@@ -228,6 +228,210 @@ order by 21 desc, s.o_start asc
 limit (select lim from p)
 $$;
 
+-- search_events_v3: v2 plus English title/description/price (event_tags, written by eventrrr-scout enrich.py; the
+-- original title comes back as title_original), Scout IQ's own is_free and superseded_by. v2 stays, unused.
+-- params (all optional): city, from, to (ISO), text (names; fuzzy), categories[], profile, neighborhood, free, max_price,
+--   kids, outdoor, venue_types[], activities[] (event_tags, written nightly by eventrrr-scout scout/enrich.py),
+--   indoor, times[] (morning | afternoon | evening | late),
+--   embedding (512 floats for the question's topic), topic_min (minimum meaning similarity, 0–1; omit to rank only),
+--   limit.
+create or replace function search_events_v3(params jsonb default '{}'::jsonb)
+returns table (
+  key text, occurrence_kind text, title text, description text,
+  starts_at timestamptz, ends_at timestamptz, all_day boolean, timezone text, ongoing boolean,
+  venue text, address text, neighborhood text,
+  price_text text, price_min numeric, price_max numeric, currency text, is_free boolean,
+  url text, category text, tier text, rank numeric, match numeric, title_original text
+)
+language sql stable security definer
+set search_path = public, extensions
+as $$
+with p as (
+  select
+    coalesce(nullif(params->>'city', ''), 'cdmx')                                         as city,
+    coalesce(nullif(params->>'from', '')::timestamptz, now())                              as dfrom,
+    coalesce(nullif(params->>'to', '')::timestamptz, now() + interval '14 days')           as dto,
+    nullif(search_fold(params->>'text'), '')                                               as q,
+    coalesce(array(select jsonb_array_elements_text(
+      case when jsonb_typeof(params->'categories') = 'array' then params->'categories' else '[]'::jsonb end)),
+      '{}')                                                                                as cats,
+    nullif(params->>'profile', '')                                                         as prof,
+    nullif(search_fold(params->>'neighborhood'), '')                                       as hood,
+    coalesce((params->>'free')::boolean, false)                                            as free_only,
+    (params->>'max_price')::numeric                                                        as max_price,
+    coalesce((params->>'kids')::boolean, false)                                            as kids,
+    coalesce((params->>'outdoor')::boolean, false)                                         as outdoor,
+    coalesce(array(select jsonb_array_elements_text(
+      case when jsonb_typeof(params->'venue_types') = 'array' then params->'venue_types' else '[]'::jsonb end)),
+      '{}')                                                                                as vtypes,
+    coalesce(array(select jsonb_array_elements_text(
+      case when jsonb_typeof(params->'activities') = 'array' then params->'activities' else '[]'::jsonb end)),
+      '{}')                                                                                as acts,
+    case when jsonb_typeof(params->'embedding') = 'array' and jsonb_array_length(params->'embedding') = 512
+         then (params->'embedding')::text::extensions.vector end                           as qvec,
+    (params->>'topic_min')::real                                                           as topic_min,
+    coalesce((params->>'indoor')::boolean, false)                                          as indoor,
+    coalesce(array(select jsonb_array_elements_text(
+      case when jsonb_typeof(params->'times') = 'array' then params->'times' else '[]'::jsonb end)),
+      '{}')                                                                                as times,
+    least(greatest(coalesce((params->>'limit')::int, 120), 1), 200)                        as lim
+),
+scores as (
+  select ca.occurrence_id,
+         max(ca.score) filter (where pr.slug = (select prof from p)) as prof_score,
+         max(ca.score)                                               as best_score
+  from current_assignments ca
+  join profiles pr on pr.id = ca.profile_id
+  where ca.score is not null
+  group by ca.occurrence_id
+),
+base as (
+  select o.id as occ_id, o.kind,
+         -- accuracy check (search_flags): an all-day event whose page gives a time shows that time
+         case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end as o_start,
+         case when e.all_day and fl.time_found is not null then null else o.ends_at end as o_end,
+         coalesce(fl.demote, false) as demote,
+         e.key, coalesce(nullif(t.title_en, ''), e.title) as title, coalesce(nullif(t.description_en, ''), e.description) as description,
+         e.title as title_orig, e.description as desc_orig, (e.all_day and fl.time_found is null) as all_day, e.timezone, e.is_ongoing,
+         case when pr.free then coalesce(nullif(t.price_en, ''), nullif(e.price_text, ''), 'Free')
+              when pr0.page_min > 0 then 'From MX$' || trim(to_char(pr0.page_min, 'FM999,999'))
+              when e.price_min > 0 then coalesce(nullif(t.price_en, ''), e.price_text)
+              when search_fold(e.price_text) ~ '(ver enlace|consult|disponibilidad|taquilla|ticketmaster|eventbrite)' then 'Prices on the listing'
+              else coalesce(nullif(t.price_en, ''), nullif(e.price_text, '')) end as price_text,
+         pr.pmin as price_min,
+         case when e.price_max > 0 then e.price_max end as price_max,
+         e.price_currency, pr.free as is_free, e.url, e.eventrrr_category,
+         coalesce(v.name, e.venue_text)          as venue_name,
+         coalesce(e.address, v.address)          as addr,
+         coalesce(e.neighborhood, v.neighborhood) as hood_name,
+         s.prof_score, s.best_score,
+         coalesce(s.prof_score, s.best_score)    as eff_score,
+         -- meaning match between the question's topic and the event (0–1), null without an embedding
+         case when p.qvec is not null and t.embedding is not null then (1 - (t.embedding <=> p.qvec))::numeric end as sim
+  from occurrences o
+  join events e  on e.id = o.event_id
+  join cities c  on c.id = e.city_id
+  left join venues v on v.id = e.venue_id
+  left join scores s on s.occurrence_id = o.id
+  left join current_reviews r on r.event_id = e.id
+  left join event_tags t on t.event_id = e.id
+  left join lateral (
+    select bool_or(f.severity = 'demote') as demote,
+           max(f.suggested_starts_at) filter (where f.check_name = 'time_found') as time_found,
+           (array_agg(f.detail order by f.last_seen desc) filter (where f.check_name in ('price_found', 'price_mismatch')))[1] as price_fix
+    from search_flags f where f.event_id = e.id and f.status = 'open') fl on true
+  -- price: the source page's price when the accuracy check read one; otherwise free only when the listing's price
+  -- text says so ("PRECIOS: ver enlace" and "SOLD OUT" were stored as free), and a 0 price without that is unknown
+  cross join lateral (
+    select coalesce((fl.price_fix->>'page_free')::boolean, e.is_free,
+                    search_fold(e.price_text) ~ '(gratis|gratuit|libre|free|sin costo|sin cargo)'
+                      and search_fold(e.price_text) !~ '(barra libre|con costo|cover)', false) as free,
+           (fl.price_fix->>'page_price_min')::numeric as page_min) pr0
+  cross join lateral (
+    select pr0.free, case when pr0.free then 0 when pr0.page_min > 0 then pr0.page_min when e.price_min > 0 then e.price_min end as pmin) pr
+  cross join p
+  where c.slug = p.city
+    and e.status in ('live', 'moved')
+    and e.superseded_by is null
+    and coalesce(r.skip_reason, '') <> 'duplicate'
+    -- Superseded re-reads: when a later run read the same page and the same event under a new date,
+    -- the older read is stale (its key carries the old date, so it never gets updated).
+    and not exists (
+      select 1 from events e2
+      join runs r2 on r2.id = e2.last_seen_run_id
+      join runs r1 on r1.id = e.last_seen_run_id
+      where e2.id <> e.id and e2.url = e.url and e2.city_id = e.city_id
+        and split_part(e2.key, '|', 1) = split_part(e.key, '|', 1)
+        and r2.created_at > r1.created_at)
+    and (case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end) <= p.dto
+    and (
+      -- multi-day runs (exhibitions, festivals): on at any point in the window
+      ((e.is_ongoing or coalesce(o.ends_at - o.starts_at, interval '0') > interval '1 day')
+        and coalesce(o.ends_at, o.starts_at + interval '1 day') >= p.dfrom)
+      or (not (e.is_ongoing or coalesce(o.ends_at - o.starts_at, interval '0') > interval '1 day') and (
+        -- all-day single events: their calendar day is in the window
+        ((e.all_day and fl.time_found is null)
+          and (o.starts_at at time zone e.timezone)::date >= (p.dfrom at time zone e.timezone)::date
+          and (o.starts_at at time zone e.timezone)::date <= ((p.dto - interval '6 hours') at time zone e.timezone)::date)
+        -- timed single events: they start in the window, or, when the window starts now, they're under way
+        or (not (e.all_day and fl.time_found is null) and (
+          coalesce(fl.time_found, o.starts_at) >= p.dfrom
+          or (p.dfrom <= now() + interval '10 minutes'
+              and coalesce(o.ends_at, coalesce(fl.time_found, o.starts_at) + interval '4 hours') >= p.dfrom)))))
+    )
+    -- the tagger says it's in another city (a León festival in a CDMX search)
+    and t.in_metro is distinct from false
+    and (cardinality(p.cats) = 0 or e.eventrrr_category = any (p.cats))
+    and (not p.kids or t.kid_friendly)
+    and (not p.outdoor or t.outdoor)
+    and (not p.indoor or t.outdoor is false)
+    -- time of day (local start): morning 05–11, afternoon 12–17, evening 18–21, late 22–04; untimed and
+    -- multi-day events have no time of day, so they drop out when one is picked
+    and (cardinality(p.times) = 0 or (
+      not (e.all_day and fl.time_found is null) and not e.is_ongoing
+      and coalesce(o.ends_at - o.starts_at, interval '0') <= interval '1 day'
+      and (case
+             when extract(hour from (case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end) at time zone e.timezone) between 5 and 11 then 'morning'
+             when extract(hour from (case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end) at time zone e.timezone) between 12 and 17 then 'afternoon'
+             when extract(hour from (case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end) at time zone e.timezone) between 18 and 21 then 'evening'
+             else 'late' end) = any (p.times)))
+    and (cardinality(p.vtypes) = 0 or t.venue_type = any (p.vtypes))
+    and (cardinality(p.acts) = 0 or t.activity = any (p.acts))
+    and (not p.free_only or pr.free)
+    -- a budget needs a known price: free, or a stated price at or under it
+    and (p.max_price is null or pr.free or pr.pmin <= p.max_price)
+),
+scored as (
+  select b.*,
+         case when p.q is null then 0::real
+              else greatest(
+                extensions.word_similarity(p.q, search_fold(b.title)) * 2,
+                extensions.word_similarity(p.q, search_fold(b.title_orig)) * 2,
+                extensions.word_similarity(p.q, search_fold(b.venue_name)) * 1.5,
+                extensions.word_similarity(p.q, search_fold(b.hood_name)),
+                case when search_fold(b.description) like '%' || p.q || '%'
+                       or search_fold(b.desc_orig) like '%' || p.q || '%' then 0.8 else 0 end)
+         end as text_rank,
+         case when p.q is null then true
+              else extensions.word_similarity(p.q, search_fold(b.title)) >= 0.6
+                or extensions.word_similarity(p.q, search_fold(b.title_orig)) >= 0.6
+                or search_fold(b.title_orig) like '%' || p.q || '%'
+                or search_fold(b.desc_orig) like '%' || p.q || '%'
+                or extensions.word_similarity(p.q, search_fold(b.venue_name)) >= 0.6
+                or extensions.word_similarity(p.q, search_fold(b.hood_name)) >= 0.7
+                or search_fold(b.title) like '%' || p.q || '%'
+                or search_fold(b.description) like '%' || p.q || '%'
+         end as text_ok,
+         case when p.hood is null then true
+              else search_fold(b.hood_name) like '%' || p.hood || '%'
+                or search_fold(b.addr) like '%' || p.hood || '%'
+                or extensions.word_similarity(p.hood, search_fold(b.hood_name)) >= 0.6
+         end as hood_ok
+  from base b cross join p
+)
+select s.key, s.kind, s.title, left(s.description, 600), s.o_start, s.o_end, s.all_day, s.timezone,
+       (s.is_ongoing or (s.o_end is not null and s.o_end - s.o_start > interval '1 day')),
+       s.venue_name, s.addr, s.hood_name, s.price_text, s.price_min, s.price_max, s.price_currency, s.is_free,
+       s.url, s.eventrrr_category,
+       -- a date the source page disputes (search_flags date_mismatch) goes to "Show more" until resolved
+       case when s.demote then 'more' when s.eff_score >= 3 then 'top' when s.eff_score = 2 then 'fill' else 'more' end,
+       -- one number that orders results; it encodes the tier but never the score itself
+       round((case when s.demote then 1 when s.eff_score >= 3 then 3 when s.eff_score = 2 then 2 else 1 end) * 100
+             + (case when s.prof_score is not null then 20 else 0 end)
+             + coalesce(s.eff_score, 0) * 5
+             + s.text_rank::numeric * 10
+             + coalesce(s.sim, 0) * 60, 2),
+       round(coalesce(s.sim, 0), 3),
+       s.title_orig
+from scored s cross join p
+where s.hood_ok
+  and coalesce(s.eff_score, 0) <> 1
+  and s.text_ok
+  and (p.topic_min is null or s.sim is null or s.sim >= p.topic_min)
+order by 21 desc, s.o_start asc
+limit (select lim from p)
+$$;
+
 -- ---------------------------------------------------------------------------------------------------------
 -- search_meta: what the API needs to understand a question (cities, profiles, categories) + data freshness
 -- ---------------------------------------------------------------------------------------------------------
@@ -325,12 +529,12 @@ where log_search_action.action in ('open', 'add', 'link', 'more')
 $$;
 
 -- Execute rights: only these four functions, to the public roles.
-revoke all on function search_events_v2(jsonb), search_meta(), log_search(uuid, text, text, jsonb, text, integer, integer, integer),
+revoke all on function search_events_v2(jsonb), search_events_v3(jsonb), search_meta(), log_search(uuid, text, text, jsonb, text, integer, integer, integer),
   log_search_action(uuid, text, text), search_fold(text) from public;
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'anon') then
-    execute 'grant execute on function search_events_v2(jsonb), search_meta(),
+    execute 'grant execute on function search_events_v2(jsonb), search_events_v3(jsonb), search_meta(),
       log_search(uuid, text, text, jsonb, text, integer, integer, integer), log_search_action(uuid, text, text) to anon, authenticated';
   end if;
 end $$;

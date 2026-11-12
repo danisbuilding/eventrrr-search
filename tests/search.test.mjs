@@ -86,7 +86,7 @@ function mockFetch({ rows, openai }) {
       if (!openai) return new Response('nope', { status: 500 });
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(openai) } }] }));
     }
-    if (url.endsWith('/rpc/search_events_v2')) return new Response(JSON.stringify(typeof rows === 'function' ? rows(body.params) : rows));
+    if (url.endsWith('/rpc/search_events_v3')) return new Response(JSON.stringify(typeof rows === 'function' ? rows(body.params) : rows));
     if (url.endsWith('/rpc/log_search')) return new Response(JSON.stringify(body.id));
     return new Response('null');
   };

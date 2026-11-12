@@ -163,6 +163,7 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
 .x { width: 44px; height: 44px; margin-right: -12px; border: none; background: none; display: flex; align-items: center; justify-content: center; }
 .x svg { fill: none; stroke: var(--ink); stroke-width: 1.5; }
 .detail h1 { margin: 2px 0 0; font-size: 28px; line-height: 34px; font-weight: 300; letter-spacing: -0.02em; }
+.detail .orig { margin: 4px 0 0; font-size: 12px; line-height: 16px; color: var(--muted); }
 .detail .desc { margin: 12px 0 0; font-size: 14px; line-height: 21px; color: var(--body); }
 .detail dl { margin: 22px 0 0; padding-top: 18px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 84px minmax(0, 1fr); row-gap: 14px; column-gap: 12px; font-size: 13px; line-height: 20px; }
 .detail dt { color: var(--muted); }

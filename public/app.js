@@ -403,6 +403,7 @@ function detailHtml(e) {
     <div class="dhead"><span class="label">${esc([e.category, p === 'Free' ? 'Free' : null].filter(Boolean).join(' · '))}</span>
       <button class="x" type="button" data-close aria-label="Close">${xIcon}</button></div>
     <h1>${esc(e.title)}</h1>
+    ${e.title_original ? `<p class="orig" lang="es">${esc(e.title_original)}</p>` : ''}
     ${e.description ? `<p class="desc">${esc(e.description)}</p>` : ''}
     <dl>
       <dt>When</dt><dd class="mono">${esc(whenLong(e))}</dd>
