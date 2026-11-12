@@ -158,3 +158,10 @@ test('keyword fallback: a named weekday is that day only; next week is Monday to
   const c = parseKeywords('outdoor activities this weekend', { meta, tz: 'America/Mexico_City', now });
   assert.equal(c.outdoor, true); assert.equal(c.from, '2026-11-13T18:00');
 });
+
+test('relaxing drops the kind of thing before who it is for', async () => {
+  const fetchImpl = mockFetch({ rows: (p) => ((p.activities || []).length ? [] : p.kids ? [row('k', 'top')] : [row('x', 'top'), row('y', 'top')]), openai: null });
+  const r = await search({ q: 'kids workshop' }, { env: ENV, meta: META, now: NOW, fetchImpl });
+  assert.deepEqual(r.relaxed_by, ['workshops']);
+  assert.deepEqual(r.results.map((x) => x.key), ['k']);
+});
