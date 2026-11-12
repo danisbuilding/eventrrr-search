@@ -165,3 +165,15 @@ test('relaxing drops the kind of thing before who it is for', async () => {
   assert.deepEqual(r.relaxed_by, ['workshops']);
   assert.deepEqual(r.results.map((x) => x.key), ['k']);
 });
+
+test('clear time words override the AI: "this weekend" is Fri 18:00–Sun; a weekday keeps the AI hours on that day', async () => {
+  const { enforceWhen } = await import('../lib/parse.js');
+  const now = new Date('2026-11-12T04:00:00Z'); // Wed 11 Nov, 22:00 in CDMX
+  const opts = { tz: 'America/Mexico_City', now };
+  const wrong = { from: '2026-11-11T22:00', to: '2026-11-15T23:59' };
+  assert.deepEqual(enforceWhen(wrong, 'free jazz this weekend', opts), { from: '2026-11-13T18:00', to: '2026-11-15T23:59' });
+  const fri = { from: '2026-11-13T18:00', to: '2026-11-14T04:00' };
+  assert.deepEqual(enforceWhen(fri, 'something romantic friday night', opts), fri);
+  assert.deepEqual(enforceWhen({ from: '2026-11-14T00:00', to: '2026-11-15T23:59' }, 'museum on sunday', opts), { from: '2026-11-15T00:00', to: '2026-11-15T23:59' });
+  assert.deepEqual(enforceWhen({ from: 'a', to: 'b' }, 'jazz', opts), { from: 'a', to: 'b' });
+});

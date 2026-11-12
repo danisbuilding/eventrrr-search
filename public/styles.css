@@ -269,3 +269,4 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
   .fmore { display: inline-flex; }
   .frow .fchip { flex: none; }
 }
+.frow .fchip { height: 32px; border-radius: 999px; padding-left: 12px; }

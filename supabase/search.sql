@@ -132,7 +132,7 @@ base as (
     -- still on: timed events count as 4 hours long, all-day ones as the whole day
     and coalesce(case when e.all_day and fl.time_found is not null then fl.time_found + interval '4 hours' end,
                  o.ends_at,
-                 o.starts_at + case when e.all_day then interval '1 day' else interval '4 hours' end) >= p.dfrom
+                 o.starts_at + case when e.all_day then interval '1 day' - interval '1 minute' else interval '4 hours' end) >= p.dfrom
     and (cardinality(p.cats) = 0 or e.eventrrr_category = any (p.cats))
     and (not p.kids or t.kid_friendly)
     and (not p.outdoor or t.outdoor)
