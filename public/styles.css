@@ -241,3 +241,5 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
   .signin { padding: 0 12px; font-size: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .skel, .dots i { animation: none; } .loader { animation: none; opacity: 1; } }
+
+.test-badge { margin-left: 10px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--green); border: 1px solid var(--green); }

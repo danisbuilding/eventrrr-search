@@ -24,7 +24,19 @@ async function api(path, body) {
   if (!res.ok) throw new Error(data.error || 'Something went wrong.');
   return data;
 }
+// Test mode (?test=1, kept for the visit): searches and clicks aren't logged, so quality tests don't skew usage numbers.
+const TEST = (() => {
+  try {
+    if (new URLSearchParams(location.search).has('test')) sessionStorage.setItem('search.test', '1');
+    return sessionStorage.getItem('search.test') === '1';
+  } catch { return new URLSearchParams(location.search).has('test'); }
+})();
+if (TEST) document.addEventListener('DOMContentLoaded', () => {
+  const b = document.querySelector('.brand');
+  if (b) b.insertAdjacentHTML('afterend', '<span class="test-badge">Test mode</span>');
+});
 function logAction(action, key) {
+  if (TEST) return;
   const qid = state.data && state.data.query_id;
   try { navigator.sendBeacon('/api/log', new Blob([JSON.stringify({ query_id: qid, action, event_key: key })], { type: 'application/json' })); } catch { /* ignore */ }
 }
@@ -105,7 +117,7 @@ async function loadPicks() {
   const box = $('#picks');
   box.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   try {
-    const r = await api('/api/search', { filters: { to: null }, city: state.city });
+    const r = await api('/api/search', { filters: { to: null }, city: state.city, test: TEST });
     state.picks = (r.results || []).filter((e) => !e.ongoing).slice(0, 3);
     if (state.picks.length < 3) state.picks.push(...(r.results || []).filter((e) => e.ongoing).slice(0, 3 - state.picks.length));
     box.innerHTML = state.picks.map((e) => `
@@ -127,7 +139,7 @@ function go(q, { push = true } = {}) {
 // Start the request while the tiger animates, so the animation costs no extra wait.
 let pending = null;
 function prefetch(q) {
-  pending = { q, city: state.city, promise: api('/api/search', { q, city: state.city }) };
+  pending = { q, city: state.city, promise: api('/api/search', { q, city: state.city, test: TEST }) };
   pending.promise.catch(() => {});
 }
 
@@ -169,7 +181,7 @@ async function runSearch({ q, filters }) {
   try {
     const pre = !filters && pending && pending.q === q && pending.city === state.city ? pending.promise : null;
     pending = null;
-    state.data = await (pre || api('/api/search', { q, filters, city: state.city }));
+    state.data = await (pre || api('/api/search', { q, filters, city: state.city, test: TEST }));
     stopLoader();
     renderResults();
   } catch (e) {
