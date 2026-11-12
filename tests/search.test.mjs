@@ -178,3 +178,15 @@ test('clear time words override the AI: "this weekend" is Fri 18:00–Sun; a wee
   assert.deepEqual(enforceWhen({ from: '2026-11-14T00:00', to: '2026-11-15T23:59' }, 'museum on sunday', opts), { from: '2026-11-15T00:00', to: '2026-11-15T23:59' });
   assert.deepEqual(enforceWhen({ from: 'a', to: 'b' }, 'jazz', opts), { from: 'a', to: 'b' });
 });
+
+test('dedupe: a short title inside a longer one is the same show; generic words alone are not', () => {
+  const tz = 'America/Mexico_City';
+  const r = (key, title, starts_at, all_day, price_min = null) => ({ key, title, starts_at, all_day, price_min, timezone: tz, occurrence_kind: 'run' });
+  const out = dedupe([
+    r('a', 'PRECIOS: Pignoise se presentará en el Foro Indie Rocks!', '2026-11-11T06:00:00+00:00', true),
+    r('b', 'Pignoise', '2026-11-12T02:00:00+00:00', false, 450),
+    r('c', 'Concierto', '2026-11-12T03:00:00+00:00', false),
+    r('d', 'Concierto de mariachis en el Zócalo', '2026-11-11T06:00:00+00:00', true),
+  ]);
+  assert.deepEqual(out.map((x) => x.key), ['b', 'c', 'd']);
+});

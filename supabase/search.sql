@@ -95,8 +95,15 @@ base as (
          case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end as o_start,
          case when e.all_day and fl.time_found is not null then null else o.ends_at end as o_end,
          coalesce(fl.demote, false) as demote,
-         e.key, e.title, e.description, (e.all_day and fl.time_found is null) as all_day, e.timezone, e.is_ongoing, e.price_text, e.price_min, e.price_max,
-         e.price_currency, e.is_free, e.url, e.eventrrr_category,
+         e.key, e.title, e.description, (e.all_day and fl.time_found is null) as all_day, e.timezone, e.is_ongoing,
+         case when pr.free then e.price_text
+              when pr0.page_min > 0 then 'From MX$' || trim(to_char(pr0.page_min, 'FM999,999'))
+              when e.price_min > 0 then e.price_text
+              when search_fold(e.price_text) ~ '(ver enlace|consult|disponibilidad|taquilla|ticketmaster|eventbrite)' then 'Prices on the listing'
+              else nullif(e.price_text, '') end as price_text,
+         pr.pmin as price_min,
+         case when e.price_max > 0 then e.price_max end as price_max,
+         e.price_currency, pr.free as is_free, e.url, e.eventrrr_category,
          coalesce(v.name, e.venue_text)          as venue_name,
          coalesce(e.address, v.address)          as addr,
          coalesce(e.neighborhood, v.neighborhood) as hood_name,
@@ -113,8 +120,18 @@ base as (
   left join event_tags t on t.event_id = e.id
   left join lateral (
     select bool_or(f.severity = 'demote') as demote,
-           max(f.suggested_starts_at) filter (where f.check_name = 'time_found') as time_found
+           max(f.suggested_starts_at) filter (where f.check_name = 'time_found') as time_found,
+           (array_agg(f.detail order by f.last_seen desc) filter (where f.check_name in ('price_found', 'price_mismatch')))[1] as price_fix
     from search_flags f where f.event_id = e.id and f.status = 'open') fl on true
+  -- price: the source page's price when the accuracy check read one; otherwise free only when the listing's price
+  -- text says so ("PRECIOS: ver enlace" and "SOLD OUT" were stored as free), and a 0 price without that is unknown
+  cross join lateral (
+    select coalesce((fl.price_fix->>'page_free')::boolean,
+                    search_fold(e.price_text) ~ '(gratis|gratuit|libre|free|sin costo|sin cargo)'
+                      and search_fold(e.price_text) !~ '(barra libre|con costo|cover)', false) as free,
+           (fl.price_fix->>'page_price_min')::numeric as page_min) pr0
+  cross join lateral (
+    select pr0.free, case when pr0.free then 0 when pr0.page_min > 0 then pr0.page_min when e.price_min > 0 then e.price_min end as pmin) pr
   cross join p
   where c.slug = p.city
     and e.status in ('live', 'moved')
@@ -129,10 +146,21 @@ base as (
         and split_part(e2.key, '|', 1) = split_part(e.key, '|', 1)
         and r2.created_at > r1.created_at)
     and (case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end) <= p.dto
-    -- still on: timed events count as 4 hours long, all-day ones as the whole day
-    and coalesce(case when e.all_day and fl.time_found is not null then fl.time_found + interval '4 hours' end,
-                 o.ends_at,
-                 o.starts_at + case when e.all_day then interval '1 day' - interval '1 minute' else interval '4 hours' end) >= p.dfrom
+    and (
+      -- multi-day runs (exhibitions, festivals): on at any point in the window
+      ((e.is_ongoing or coalesce(o.ends_at - o.starts_at, interval '0') > interval '1 day')
+        and coalesce(o.ends_at, o.starts_at + interval '1 day') >= p.dfrom)
+      or (not (e.is_ongoing or coalesce(o.ends_at - o.starts_at, interval '0') > interval '1 day') and (
+        -- all-day single events: their calendar day is in the window
+        ((e.all_day and fl.time_found is null)
+          and (o.starts_at at time zone e.timezone)::date >= (p.dfrom at time zone e.timezone)::date
+          and (o.starts_at at time zone e.timezone)::date <= ((p.dto - interval '6 hours') at time zone e.timezone)::date)
+        -- timed single events: they start in the window, or, when the window starts now, they're under way
+        or (not (e.all_day and fl.time_found is null) and (
+          coalesce(fl.time_found, o.starts_at) >= p.dfrom
+          or (p.dfrom <= now() + interval '10 minutes'
+              and coalesce(o.ends_at, coalesce(fl.time_found, o.starts_at) + interval '4 hours') >= p.dfrom)))))
+    )
     and (cardinality(p.cats) = 0 or e.eventrrr_category = any (p.cats))
     and (not p.kids or t.kid_friendly)
     and (not p.outdoor or t.outdoor)
@@ -149,11 +177,9 @@ base as (
              else 'late' end) = any (p.times)))
     and (cardinality(p.vtypes) = 0 or t.venue_type = any (p.vtypes))
     and (cardinality(p.acts) = 0 or t.activity = any (p.acts))
-    and (not p.free_only
-         or e.is_free
-         or e.price_min = 0
-         or search_fold(e.price_text) ~ '(gratis|libre|free|sin costo)')
-    and (p.max_price is null or e.is_free or e.price_min is null or e.price_min <= p.max_price)
+    and (not p.free_only or pr.free)
+    -- a budget needs a known price: free, or a stated price at or under it
+    and (p.max_price is null or pr.free or pr.pmin <= p.max_price)
 ),
 scored as (
   select b.*,
