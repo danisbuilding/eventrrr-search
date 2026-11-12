@@ -190,3 +190,12 @@ test('dedupe: a short title inside a longer one is the same show; generic words 
   ]);
   assert.deepEqual(out.map((x) => x.key), ['b', 'c', 'd']);
 });
+
+test('honesty: a topic with nothing close says so; a question with no meaning says it was unclear', async () => {
+  const { specificWords } = await import('../lib/search.js');
+  assert.deepEqual(specificWords('dance classes'), ['dance']);
+  assert.deepEqual(specificWords('outdoor activities'), []);
+  const fetchImpl = mockFetch({ rows: [row('x', 'top')], openai: { city: null, from: null, to: null, text: null, topic: null, categories: [], kids: false, outdoor: false, indoor: false, times: [], venue_types: [], activities: [], profile: null, neighborhood: null, free: false, max_price: null } });
+  const r = await search({ q: 'asdfgh' }, { env: ENV, meta: META, now: NOW, fetchImpl });
+  assert.equal(r.unclear, true);
+});

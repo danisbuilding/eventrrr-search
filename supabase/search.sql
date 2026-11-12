@@ -161,6 +161,8 @@ base as (
           or (p.dfrom <= now() + interval '10 minutes'
               and coalesce(o.ends_at, coalesce(fl.time_found, o.starts_at) + interval '4 hours') >= p.dfrom)))))
     )
+    -- the tagger says it's in another city (a León festival in a CDMX search)
+    and t.in_metro is distinct from false
     and (cardinality(p.cats) = 0 or e.eventrrr_category = any (p.cats))
     and (not p.kids or t.kid_friendly)
     and (not p.outdoor or t.outdoor)

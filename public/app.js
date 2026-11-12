@@ -353,7 +353,8 @@ function renderResults() {
   if (d.relaxed) {
     const what = (d.relaxed_by || []).length ? listWords(d.relaxed_by) : 'matched those words';
     html += `<p class="note">Nothing ${esc(what)} ${d.when_label ? `for ${esc(d.when_label.toLowerCase().startsWith('tonight') ? 'tonight' : d.when_label)}` : 'yet'}, so here are the closest matches for those dates.</p>`;
-  } else if (d.expanded) html += `<p class="note">Not much has been picked for this yet, so here's everything we found.</p>`;
+  } else if (d.unclear) html += `<p class="note">We couldn't tell what you're looking for, so here's what's coming up. Try a kind of event, a day or a place.</p>`;
+  else if (d.expanded) html += `<p class="note">Not much has been picked for this yet, so here's everything we found.</p>`;
   // Dated events first; long-running exhibitions after them, unless they're all there is.
   for (const day of days) html += section(dayLabel(day.items[0]), day.items, '');
   if (ongoing.length) {
