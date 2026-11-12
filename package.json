@@ -8,6 +8,7 @@
     "deploy": "wrangler pages deploy public --project-name eventrrr-search --branch main"
   },
   "devDependencies": {
+    "playwright": "^1.65.0",
     "wrangler": "^4.40.0"
   }
 }

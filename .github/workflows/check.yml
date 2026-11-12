@@ -1,21 +1,43 @@
 name: check
-# Nightly end-to-end check of the live site: the page loads, meta answers, and a real question returns events.
-# A failure emails the repo owner (GitHub's default for failed scheduled workflows).
+# Nightly live check of search.eventrrr.com (tests/live/check.mjs): filter correctness, keywords, the page on a
+# phone and desktop, and speed. The report replaces the body of the issue "Search live check"; screenshots and the
+# raw results are kept as the run's artifact. A failing check fails the run (GitHub emails the repo owner).
 on:
   schedule: [{cron: "17 13 * * *"}]   # 07:17 Mexico City
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['tests/live/**', '.github/workflows/check.yml']
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
-      - name: Page
-        run: curl -fsS https://search.eventrrr.com/ | grep -q "Eventrrr Search"
-      - name: Meta
-        run: curl -fsS https://search.eventrrr.com/api/meta | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['cities'], 'no cities'; print('updated', d.get('updated_at'))"
-      - name: Search
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Live check
+        id: check
+        run: node tests/live/check.mjs
+      - name: Report to the issue
+        if: always()
+        env: { GH_TOKEN: "${{ github.token }}" }
         run: |
-          curl -fsS -X POST https://search.eventrrr.com/api/search -H 'content-type: application/json' \
-            -d '{"q":"things to do this week","filters":null}' \
-          | python3 -c "import json,sys; d=json.load(sys.stdin); n=len(d['results']); print('results', n, 'parser', d['parser']); assert n > 0, 'no results'"
+          [ -f tests/live/out/report.md ] || exit 0
+          n=$(gh issue list --state all --search 'in:title "Search live check"' --json number --jq '.[0].number')
+          if [ -z "$n" ]; then
+            gh issue create --title "Search live check" --body-file tests/live/out/report.md
+          else
+            gh issue edit "$n" --body-file tests/live/out/report.md
+            [ "${{ steps.check.outcome }}" = "failure" ] && gh issue comment "$n" --body "Live check failed on $(date -u +%F). See the report above and run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}." || true
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: live-check, path: tests/live/out/, retention-days: 14 }

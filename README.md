@@ -22,6 +22,14 @@ and see every matching event from Scout IQ by day; tap + to save one to your Eve
 | Rotate a key | Update the GitHub secret, then Actions → deploy → Run workflow. |
 | Change the parsing model | `OPENAI_MODEL` in `wrangler.toml`. |
 
+## Live check (nightly)
+
+`tests/live/check.mjs` tests the live site the way the Agent Test Protocol v2 does, minus the judgment calls: every
+result of 20 filter combinations against the filter rules (written independently of `lib/`), keyword matching and
+the no-match note, the page on a phone (390×844) and desktop (1440×900), and speed. `.github/workflows/check.yml`
+runs it at 07:17 Mexico City and on demand; the report is the body of the GitHub issue "Search live check", and
+screenshots are the run's artifact. Locally: `CHROME_PATH=/usr/bin/google-chrome node tests/live/check.mjs`.
+
 ## How it finds events (filter-first since 2026-11-12)
 
 The page sends the picked filters (`browse: true`); no AI reads anything. Every match is shown: dated events by day,
