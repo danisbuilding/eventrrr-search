@@ -239,7 +239,7 @@ function removeChip(field, value) {
 // wide screens and under "More" on phones. A typed question sets them too (the AI's reading shows as these filters).
 // Changing one re-runs the search without the AI: fast and free.
 const TIME_OPTS = [['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening'], ['late', 'Late night']];
-const ROW_FIELDS = new Set(['when', 'category', 'outdoor', 'indoor', 'times', 'kids', 'hide_ongoing', 'city']);
+const ROW_FIELDS = new Set(['when', 'category', 'outdoor', 'indoor', 'times', 'kids', 'hide_ongoing', 'free', 'paid', 'city']);
 function whenId(d) {
   const f = d.filters || {};
   const o = (d.when_options || []).find((x) => x.from === f.from && x.to === f.to);
@@ -265,13 +265,15 @@ function renderFilters() {
   const setting = f.outdoor ? 'Outdoors' : f.indoor ? 'Indoors' : '';
   const times = f.times || [];
   const timeLabel = times.map((t) => (TIME_OPTS.find((o) => o[0] === t) || [, t])[1]).join(', ');
-  const nMore = [setting, timeLabel, f.kids, f.hide_ongoing].filter(Boolean).length;
+  const price = f.free ? 'Free' : f.paid ? 'Paid' : '';
+  const nMore = [setting, timeLabel, price, f.kids, f.hide_ongoing].filter(Boolean).length;
   const extra = (d.chips || []).map((c, i) => [c, i]).filter(([c]) => !ROW_FIELDS.has(c.field));
   let html = `<div class="frow" role="toolbar" aria-label="Filters">
     ${fpill('when', whenLabel, wid !== 'any')}
     ${fpill('theme', cats.length ? cats.join(', ') : 'Theme', cats.length > 0)}
     ${fpill('setting', setting || 'Setting', !!setting, 'sec')}
     ${fpill('time', timeLabel || 'Time of day', times.length > 0, 'sec')}
+    ${fpill('price', price || 'Price', !!price, 'sec')}
     ${ftoggle('kids', 'Kid-friendly', f.kids)}
     ${ftoggle('hide_ongoing', 'Hide ongoing', f.hide_ongoing)}
     ${fpill('more', nMore ? `More · ${nMore}` : 'More', nMore > 0, 'fmore')}
@@ -283,13 +285,16 @@ function renderFilters() {
     const whenOpts = () => (d.when_options || []).map((x) => fopt(`when:${x.id}`, x.id === 'any' ? 'Any time' : x.label, wid === x.id)).join('')
       + `<div class="fdates"><input type="date" id="fd-from" aria-label="From" value="${esc(f.from.slice(0, 10))}"><span>to</span><input type="date" id="fd-to" aria-label="To" value="${esc(f.to.slice(0, 10))}">${fopt('when:custom', 'Apply', wid === 'custom')}</div>`;
     const settingOpts = () => fopt('setting:any', 'Any', !setting) + fopt('setting:outdoor', 'Outdoors', !!f.outdoor) + fopt('setting:indoor', 'Indoors', !!f.indoor);
+    const priceOpts = () => fopt('price:any', 'Any', !price) + fopt('price:free', 'Free', !!f.free) + fopt('price:paid', 'Paid', !!f.paid);
     const timeOpts = () => fopt('time:any', 'Any time of day', !times.length) + TIME_OPTS.map(([k, l]) => fopt(`time:${k}`, l, times.includes(k))).join('');
     if (o === 'when') body = whenOpts();
     else if (o === 'theme') body = fopt('theme:any', 'Any theme', !cats.length) + (d.categories || []).map((c) => fopt(`theme:${c}`, c, cats.includes(c))).join('');
     else if (o === 'setting') body = settingOpts();
+    else if (o === 'price') body = priceOpts();
     else if (o === 'time') body = timeOpts() + '<p class="fnote">Events without a start time are left out.</p>';
     else if (o === 'more') body = `<div class="fgroup"><div class="label">Setting</div>${settingOpts()}</div>
       <div class="fgroup"><div class="label">Time of day</div>${timeOpts()}</div>
+      <div class="fgroup"><div class="label">Price</div>${priceOpts()}</div>
       <div class="fgroup"><div class="label">Show</div>${fopt('toggle:kids', 'Kid-friendly only', f.kids)}${fopt('toggle:hide_ongoing', 'Hide ongoing exhibitions', f.hide_ongoing)}</div>`;
     html += `<div class="fpanel" data-panel="${o}">${body}</div>`;
   }
@@ -316,6 +321,7 @@ function onFilterSet(v) {
     const cats = f.categories || [];
     applyFilters({ categories: val === 'any' ? [] : cats.includes(val) ? cats.filter((c) => c !== val) : [...cats, val], venue_types: [], activities: [] });
   } else if (k === 'setting') applyFilters({ outdoor: val === 'outdoor', indoor: val === 'indoor' });
+  else if (k === 'price') applyFilters({ free: val === 'free', paid: val === 'paid', max_price: null });
   else if (k === 'time') {
     const t = f.times || [];
     applyFilters({ times: val === 'any' ? [] : t.includes(val) ? t.filter((x) => x !== val) : [...t, val] });
