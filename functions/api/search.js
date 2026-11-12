@@ -13,7 +13,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
   if (!q && !overrides) return json({ error: 'Type something to search for.' }, 400);
   try {
     const meta = await getMeta(env, { waitUntil });
-    const result = await search({ q, city: body.city, overrides, debug: body.debug === true, tune: body.test === true && body.tune ? body.tune : null }, { env, meta, log: body.test === true ? null : (p) => waitUntil(p) });
+    const result = await search({ q, city: body.city, overrides, debug: body.debug === true, tune: body.test === true && body.tune ? body.tune : null }, { env, meta, waitUntil, log: body.test === true ? null : (p) => waitUntil(p) });
     return json(result, 200, { 'cache-control': 'no-store' });
   } catch (e) {
     console.error('search failed', e && e.message);

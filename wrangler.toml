@@ -5,5 +5,5 @@ compatibility_date = "2026-11-01"
 
 [vars]
 SCOUT_IQ_URL = "https://tlwyhxvytmhpcgrismsz.supabase.co"
-OPENAI_MODEL = "gpt-5-nano"
+OPENAI_MODEL = "gpt-4.1-mini"  # 1.5 s median vs 6.6 s for gpt-5-nano; see README "Speed"
 # Secrets (set by the deploy workflow from GitHub secrets): OPENAI_API_KEY, SCOUT_IQ_PUBLISHABLE_KEY

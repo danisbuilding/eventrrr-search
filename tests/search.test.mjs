@@ -108,7 +108,7 @@ test('3s first, 2s fill to the minimum, the rest under more; nothing reveals sco
   assert.deepEqual(r.results.slice(0, 2).map((x) => x.key), ['t1', 't2']);
   assert.equal(r.more.length, 8);
   assert.ok(r.results.every((x) => !('tier' in x) && !('rank' in x)));
-  assert.equal(r.parser, 'gpt-5-nano');
+  assert.equal(r.parser, 'gpt-4.1-mini');
   assert.ok(fetchImpl.calls.some((c) => c.url.endsWith('/rpc/log_search') && c.body.id === r.query_id));
 });
 
