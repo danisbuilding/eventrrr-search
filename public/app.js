@@ -94,9 +94,10 @@ const WHEN = [['any', 'Next 2 weeks'], ['today', 'Today'], ['tonight', 'Tonight'
   ['weekend', 'This weekend'], ['nextweek', 'Next week'], ['custom', 'Pick dates']];
 const TIME_OPTS = [['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening'], ['late', 'Late night']];
 const EXTRA_FIELDS = ['profile', 'neighborhood', 'venue_types', 'activities', 'max_price'];
-const blank = () => ({ when: 'any', from: '', to: '', cats: [], kw: '', price: '', times: [], setting: '', kids: false, hideOngoing: false, extra: {} });
+// Ongoing runs (exhibitions and the like) are hidden unless someone picks Show ongoing.
+const blank = () => ({ when: 'any', from: '', to: '', cats: [], kw: '', price: '', times: [], setting: '', kids: false, hideOngoing: true, extra: {} });
 state.f = blank();
-state.moreOpen = false;
+state.open = null;     // which filter dropdown is open
 
 function fromURL() {
   const p = new URLSearchParams(location.search);
@@ -111,7 +112,7 @@ function fromURL() {
   f.times = p.getAll('time').filter((t) => TIME_OPTS.some(([k]) => k === t));
   f.setting = ['indoor', 'outdoor'].includes(p.get('setting')) ? p.get('setting') : '';
   f.kids = p.get('kids') === '1';
-  f.hideOngoing = p.get('ongoing') === 'hide';
+  f.hideOngoing = p.get('ongoing') !== 'show';
   return f;
 }
 function toURL(f) {
@@ -124,7 +125,7 @@ function toURL(f) {
   f.times.forEach((t) => p.append('time', t));
   if (f.setting) p.set('setting', f.setting);
   if (f.kids) p.set('kids', '1');
-  if (f.hideOngoing) p.set('ongoing', 'hide');
+  if (!f.hideOngoing) p.set('ongoing', 'show');
   if (TEST) p.set('test', '1');
   const s = p.toString();
   return s ? `?${s}` : location.pathname;
@@ -146,7 +147,7 @@ function fromServer(sf, d) {
   f.price = sf.free ? 'free' : sf.paid ? 'paid' : '';
   f.times = sf.times || [];
   f.setting = sf.outdoor ? 'outdoor' : sf.indoor ? 'indoor' : '';
-  f.kids = !!sf.kids; f.hideOngoing = !!sf.hide_ongoing;
+  f.kids = !!sf.kids;
   for (const k of EXTRA_FIELDS) { const v = sf[k]; if (v && !(Array.isArray(v) && !v.length)) f.extra[k] = v; }
   return f;
 }
@@ -181,39 +182,87 @@ function renderCity() {
   btn.title = cities.length > 1 ? 'Change city' : '';
 }
 
-function opt(attr, val, label, on) {
-  return `<button type="button" class="fopt${on ? ' on' : ''}" data-${attr}="${esc(val)}" aria-pressed="${!!on}">${esc(label)}</button>`;
+// Filter pills. Each opens a dropdown: single-choice ones (When, Price, Setting) close on pick, multi-choice ones
+// (What, Time of day) are checkboxes and stay open. Kid-friendly and Hide ongoing are on/off pills.
+// Phones show When, What, Hide ongoing and "⋯" (the rest); desktop shows every pill left to right.
+const chevron = '<svg class="chev-d" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+const tick = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
+// What the More dropdown holds: everything but When, Event type and Ongoing on phones; just Kid-friendly on desktop.
+function moreCount(f) { return (desktop.matches ? [f.kids] : [f.price, f.times.length, f.setting, f.kids]).filter(Boolean).length; }
+const anyFilter = (f) => f.when !== 'any' || f.cats.length || f.kw || f.price || f.times.length || f.setting || f.kids || !f.hideOngoing || Object.keys(f.extra).length;
+function many(list, labelOf, empty) { return !list.length ? empty : list.length === 1 ? labelOf(list[0]) : `${labelOf(list[0])} +${list.length - 1}`; }
+const timeLabel = (k) => (TIME_OPTS.find((o) => o[0] === k) || [, k])[1];
+function pill(id, label, on, cls = '') {
+  const open = state.open === id;
+  return `<button type="button" class="fpill${on ? ' on' : ''}${open ? ' open' : ''}${cls ? ' ' + cls : ''}" data-pop="${id}" aria-haspopup="true" aria-expanded="${open}"><span class="pl">${esc(label)}</span>${chevron}</button>`;
 }
-function moreCount(f) { return [f.price, f.times.length, f.setting, f.kids, f.hideOngoing].filter(Boolean).length; }
+function toggle(field, label, on, cls = '') {
+  return `<button type="button" class="fpill tog${on ? ' on' : ''}${cls ? ' ' + cls : ''}" data-toggle="${field}" aria-pressed="${!!on}">${on ? tick : ''}${esc(label)}</button>`;
+}
+// One option row: a radio (single choice) or a checkbox (multi choice).
+function mopt(attr, val, label, on, multi) {
+  return `<button type="button" class="mopt" role="${multi ? 'menuitemcheckbox' : 'menuitemradio'}" aria-checked="${!!on}" data-${attr}="${esc(val)}"><span class="${multi ? 'cbox' : 'rbox'}">${on && multi ? tick : ''}</span>${esc(label)}</button>`;
+}
+function popBody(id) {
+  const f = state.f;
+  const cats = state.meta?.categories?.length ? state.meta.categories : CATS;
+  const priceOpts = () => mopt('price', '', 'All prices', !f.price) + mopt('price', 'free', 'Free', f.price === 'free') + mopt('price', 'paid', 'Paid', f.price === 'paid');
+  const timeOpts = () => mopt('time', '', 'All times', !f.times.length, true) + TIME_OPTS.map(([k, l]) => mopt('time', k, l, f.times.includes(k), true)).join('')
+    + '<p class="fnote">Events without a start time are left out.</p>';
+  const settingOpts = () => mopt('setting', '', 'Indoors and outdoors', !f.setting) + mopt('setting', 'indoor', 'Indoors', f.setting === 'indoor') + mopt('setting', 'outdoor', 'Outdoors', f.setting === 'outdoor');
+  const foot = (clear) => `<div class="pfoot"><button type="button" class="linkish" data-clear="${clear}">Clear</button><button type="button" class="pdone" data-done>Done</button></div>`;
+  // Each dropdown says what it filters, above its options ("All …" first).
+  const head = (t) => `<div class="phead">${t}</div>`;
+  if (id === 'when') {
+    return head('When') + WHEN.map(([k, l]) => mopt('when', k, l, f.when === k)).join('')
+      + (f.when === 'custom' ? `<div class="fdates"><input type="date" id="fd-from" aria-label="From" value="${esc(f.from)}"><span>to</span><input type="date" id="fd-to" aria-label="To" value="${esc(f.to)}"><button type="button" class="pdone" id="fd-apply">Apply</button></div>` : '');
+  }
+  if (id === 'what') return `${head('Event type')}${mopt('cat', '', 'All event types', !f.cats.length, true)}<div class="plist two">${cats.map((c) => mopt('cat', c, c, f.cats.includes(c), true)).join('')}</div>${foot('cats')}`;
+  if (id === 'price') return head('Price') + priceOpts();
+  if (id === 'time') return head('Time of day') + timeOpts() + foot('times');
+  if (id === 'setting') return head('Setting') + settingOpts();
+  if (id === 'ongoing') return head('Ongoing events') + mopt('ongoing', 'hide', 'Hide ongoing', f.hideOngoing) + mopt('ongoing', 'show', 'Show ongoing', !f.hideOngoing)
+    + '<p class="fnote">Exhibitions and other events that run for weeks.</p>';
+  const kids = mopt('toggle', 'kids', 'Kid-friendly only', f.kids, true);
+  if (id === 'more' && desktop.matches) return head('More filters') + kids;
+  if (id === 'more') return `${head('More filters')}<div class="pgroup"><div class="label">Price</div>${priceOpts()}</div>
+    <div class="pgroup"><div class="label">Time of day</div>${timeOpts()}</div>
+    <div class="pgroup"><div class="label">Setting</div>${settingOpts()}</div>
+    <div class="pgroup"><div class="label">Who</div>${kids}</div>${foot('more')}`;
+  return '';
+}
 function renderFinder() {
   const f = state.f;
-  $('#f-when').innerHTML = WHEN.map(([id, l]) => opt('when', id, l, f.when === id)).join('');
-  $('#f-dates').hidden = f.when !== 'custom';
-  if (f.when === 'custom') { $('#fd-from').value = f.from; $('#fd-to').value = f.to; }
-  const cats = state.meta?.categories?.length ? state.meta.categories : CATS;
-  $('#f-what').innerHTML = opt('cat', '', 'Anything', !f.cats.length) + cats.map((c) => opt('cat', c, c, f.cats.includes(c))).join('');
+  const whenL = f.when === 'custom' ? `${fmtDay(f.from)} – ${fmtDay(f.to)}` : WHEN.find(([k]) => k === f.when)[1];
   const n = moreCount(f);
-  const mb = $('#f-more-btn');
-  mb.innerHTML = `${n ? `More filters · ${n}` : 'More filters'}<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
-  mb.classList.toggle('on', n > 0); mb.classList.toggle('open', state.moreOpen);
-  mb.setAttribute('aria-expanded', state.moreOpen);
-  const panel = $('#f-more');
-  panel.hidden = !state.moreOpen;
-  if (state.moreOpen) panel.innerHTML = `
-    <div class="fgroup"><div class="label">Price</div>${opt('price', '', 'Any', !f.price)}${opt('price', 'free', 'Free', f.price === 'free')}${opt('price', 'paid', 'Paid', f.price === 'paid')}</div>
-    <div class="fgroup"><div class="label">Time of day</div>${opt('time', '', 'Any time', !f.times.length)}${TIME_OPTS.map(([k, l]) => opt('time', k, l, f.times.includes(k))).join('')}
-      ${f.times.length ? '<p class="fnote">Events without a start time are left out.</p>' : ''}</div>
-    <div class="fgroup"><div class="label">Setting</div>${opt('setting', '', 'Any', !f.setting)}${opt('setting', 'indoor', 'Indoors', f.setting === 'indoor')}${opt('setting', 'outdoor', 'Outdoors', f.setting === 'outdoor')}</div>
-    <div class="fgroup"><div class="label">Show</div>${opt('toggle', 'kids', 'Kid-friendly only', f.kids)}${opt('toggle', 'hideOngoing', 'Hide ongoing exhibitions', f.hideOngoing)}</div>`;
-  // Phones show each row as one scrolling line: keep the picked option in view.
-  for (const row of [$('#f-when'), $('#f-what')]) {
-    const on = row.querySelector('.fopt.on');
-    if (on && row.scrollWidth > row.clientWidth) {
-      const l = on.offsetLeft - row.offsetLeft, r = l + on.offsetWidth;
-      if (l < row.scrollLeft || r > row.scrollLeft + row.clientWidth) row.scrollLeft = Math.max(0, l - 24);
-    }
+  const more = pill('more', n ? `More · ${n}` : 'More', n > 0);
+  $('#f-pills').innerHTML =
+      pill('when', whenL, f.when !== 'any')
+    + pill('what', many(f.cats, (c) => c, 'Event type'), f.cats.length > 0)
+    + pill('price', f.price === 'free' ? 'Free' : f.price === 'paid' ? 'Paid' : 'Price', !!f.price, 'd-only')
+    + pill('time', many(f.times, timeLabel, 'Time of day'), f.times.length > 0, 'd-only')
+    + pill('setting', f.setting === 'indoor' ? 'Indoors' : f.setting === 'outdoor' ? 'Outdoors' : 'Setting', !!f.setting, 'd-only')
+    + pill('ongoing', f.hideOngoing ? 'Hide ongoing' : 'Show ongoing', !f.hideOngoing)
+    + (desktop.matches ? more : '');
+  // Phones: More sits beside the keywords box, so When, Event type and Ongoing keep one line.
+  $('#f-more-m').innerHTML = desktop.matches ? '' : more;
+  const pop = $('#f-pop');
+  pop.hidden = !state.open;
+  if (state.open) {
+    pop.dataset.pop = state.open;
+    pop.innerHTML = popBody(state.open);
+    // Desktop: the dropdown opens under its pill; phones: full width under the row (CSS).
+    const p = [...document.querySelectorAll(`#finder [data-pop="${state.open}"]`)].find((x) => x.offsetParent);
+    // Right under the pill that opened it.
+    if (p) pop.style.top = `${p.offsetTop + p.offsetHeight + 6}px`;
+    if (p && desktop.matches) {
+      const max = $('#finder').clientWidth - pop.offsetWidth - 8;
+      pop.style.left = `${Math.max(8, Math.min(p.offsetLeft, max))}px`;
+    } else pop.style.left = '';
   }
   const kw = $('#kw');
+  // Desktop has room for examples; phones just say "Keywords".
+  kw.placeholder = desktop.matches ? 'Keywords, e.g. jazz, Roma, Tamayo' : 'Keywords';
   if (document.activeElement !== kw) kw.value = f.kw;
   $('#kw-x').hidden = !kw.value;
   // Filters an old link set that the finder has no control for (a neighborhood, a vibe): removable chips.
@@ -221,6 +270,7 @@ function renderFinder() {
   $('#f-extra').innerHTML = ex.map(([k, v]) => `<span class="fchip">${esc(extraLabel(k, v))}<button type="button" data-unextra="${k}" aria-label="Remove">${xIcon.replace(/16/g, '10')}</button></span>`).join('');
   $('#f-extra').hidden = !ex.length;
 }
+const fmtDay = (d) => { try { return new Date(`${d}T12:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); } catch { return d; } };
 function extraLabel(k, v) {
   if (k === 'max_price') return `Under $${v}`;
   if (k === 'profile') return (state.meta?.profiles || []).find((p) => p.slug === v)?.name || v;
@@ -333,7 +383,7 @@ function renderResults() {
   const d = state.data;
   const list = [...d.results, ...(d.more || [])];
   const f = state.f;
-  const anySet = f.when !== 'any' || f.cats.length || f.kw || moreCount(f) || Object.keys(f.extra).length;
+  const anySet = anyFilter(f);
   if (!list.length) {
     $('#result-list').innerHTML = `<div class="empty"><img src="/assets/tiger-avatar.webp" alt="" width="140" height="140">
       <p>Nothing matches all of these yet. Try another day or fewer filters.</p>
@@ -585,40 +635,48 @@ async function onAdd(key) {
 
 // ---------------------------------------------------------------- events
 document.addEventListener('click', async (ev) => {
+  if (state.open && !ev.target.closest('#f-pop, [data-pop]')) { state.open = null; renderFinder(); }
   const t = ev.target.closest('button, a');
   if (!t) return;
   if (t.dataset.open) { openDetail(t.dataset.open); return; }
   if (t.dataset.add) { onAdd(t.dataset.add); return; }
   if (t.dataset.link) { logAction('link', t.dataset.link); return; }
   // finder
+  if (t.dataset.pop) { state.open = state.open === t.dataset.pop ? null : t.dataset.pop; renderFinder(); return; }
+  if (t.hasAttribute('data-done')) { state.open = null; renderFinder(); return; }
+  if (t.dataset.clear) {
+    const c = t.dataset.clear;
+    setF(c === 'cats' ? { cats: [] } : c === 'times' ? { times: [] } : desktop.matches ? { kids: false } : { price: '', times: [], setting: '', kids: false }); return;
+  }
   if (t.dataset.when !== undefined) {
     if (t.dataset.when === 'custom') {
       const today = new Date().toLocaleDateString('en-CA', { timeZone: state.data?.timezone || 'America/Mexico_City' });
       state.f = { ...state.f, when: 'custom', from: state.f.from || today, to: state.f.to || today };
       renderFinder(); $('#fd-from').focus(); return;
     }
+    state.open = null;
     setF({ when: t.dataset.when, from: '', to: '' }); return;
   }
   if (t.dataset.cat !== undefined) {
     const c = t.dataset.cat, cats = state.f.cats;
     setF({ cats: !c ? [] : cats.includes(c) ? cats.filter((x) => x !== c) : [...cats, c] }); return;
   }
-  if (t.dataset.price !== undefined) { setF({ price: t.dataset.price }); return; }
-  if (t.dataset.setting !== undefined) { setF({ setting: t.dataset.setting }); return; }
+  if (t.dataset.price !== undefined) { if (state.open !== 'more') state.open = null; setF({ price: t.dataset.price }); return; }
+  if (t.dataset.setting !== undefined) { if (state.open !== 'more') state.open = null; setF({ setting: t.dataset.setting }); return; }
   if (t.dataset.time !== undefined) {
     const k = t.dataset.time, ts = state.f.times;
     setF({ times: !k ? [] : ts.includes(k) ? ts.filter((x) => x !== k) : [...ts, k] }); return;
   }
+  if (t.dataset.ongoing) { state.open = null; setF({ hideOngoing: t.dataset.ongoing === 'hide' }); return; }
   if (t.dataset.toggle) { setF({ [t.dataset.toggle]: !state.f[t.dataset.toggle] }); return; }
   if (t.dataset.unextra) { const ex = { ...state.f.extra }; delete ex[t.dataset.unextra]; setF({ extra: ex }); return; }
-  if (t.id === 'f-more-btn') { state.moreOpen = !state.moreOpen; renderFinder(); return; }
   if (t.id === 'fd-apply') {
     const a = $('#fd-from').value, b = $('#fd-to').value;
-    if (a && b) setF({ when: 'custom', from: a <= b ? a : b, to: a <= b ? b : a });
+    if (a && b) { state.open = null; setF({ when: 'custom', from: a <= b ? a : b, to: a <= b ? b : a }); }
     return;
   }
   if (t.id === 'kw-x') { $('#kw').value = ''; if (state.f.kw) setF({ kw: '' }); else renderFinder(); return; }
-  if (t.id === 'clear-all') { state.f = blank(); state.moreOpen = false; refresh(); return; }
+  if (t.id === 'clear-all') { state.f = blank(); state.open = null; refresh(); return; }
   if (t.id === 'retry') { refresh({ push: false }); return; }
   if (t.hasAttribute('data-close')) { t.closest('dialog')?.close(); if (!t.closest('dialog')) setPane(false); return; }
   if (t.id === 'ongoing-more') { state.ongoingOpen = true; renderResults(); return; }
@@ -659,7 +717,8 @@ $('#kw').addEventListener('input', () => {
 $('#sheet').addEventListener('close', () => { if (!desktop.matches) state.selected = null; });
 document.querySelectorAll('dialog').forEach((d) => d.addEventListener('click', (ev) => { if (ev.target === d) d.close(); }));
 window.addEventListener('popstate', route);
-desktop.addEventListener('change', () => { if (state.data) renderResults(); });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && state.open) { state.open = null; renderFinder(); } });
+desktop.addEventListener('change', () => { renderFinder(); if (state.data) renderResults(); });
 
 function route() {
   const p = new URLSearchParams(location.search);

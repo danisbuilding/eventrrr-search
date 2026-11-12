@@ -272,19 +272,43 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
 }
 .frow .fchip { height: 32px; border-radius: 999px; padding-left: 12px; }
 
-/* The finder (filter-first page): a card the tiger peeks over, results right under it */
+/* The finder: a card the tiger peeks over; filter pills open dropdowns; results right under it */
 .finder-wrap .tiger { bottom: auto; top: 1px; transform: translateY(-100%); }
-.finder { position: relative; z-index: 1; padding: 14px 16px; background: #fff; border: 1px solid var(--control); border-radius: 12px; box-shadow: 0 2px 8px rgba(28,25,23,.05); display: flex; flex-direction: column; gap: 12px; }
-.fline { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.flabel { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-.fopts { display: flex; flex-wrap: wrap; gap: 6px; }
-.finder .fdates { margin: -4px 0 0; }
-.fbottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
-#f-more-btn { flex: none; }
-.finder .fpanel { margin-top: 0; }
-.fextra { gap: 6px; }
+.finder { position: relative; z-index: 1; padding: 12px; background: #fff; border: 1px solid var(--control); border-radius: 12px; box-shadow: 0 2px 8px rgba(28,25,23,.05); }
+.fbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fpill .chev-d { fill: none; stroke: currentColor; stroke-width: 2; transition: transform .15s; }
+.fpill.open .chev-d { transform: rotate(180deg); }
+.fpill.open { border-color: var(--ink); }
+.fpill.tog { padding: 0 12px; gap: 5px; }
+.fpill.tog svg { fill: none; stroke: currentColor; stroke-width: 2.2; }
+.fpill.dots { min-width: 36px; padding: 0 10px; gap: 4px; justify-content: center; }
+.fpill.dots svg { fill: currentColor; }
+.badge { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--green); color: #fff; font-size: 10px; line-height: 16px; font-weight: 500; text-align: center; }
+.m-only { display: none; }
+.kwrow { display: flex; align-items: center; gap: 8px; }
+/* Dropdowns */
+.pop { position: absolute; z-index: 4; top: 54px; left: 12px; min-width: 230px; max-width: calc(100% - 24px); max-height: 62vh; overflow: auto; padding: 6px; background: #fff; border: 1px solid var(--control); border-radius: 12px; box-shadow: 0 12px 32px rgba(28,25,23,.14); }
+.pop[data-pop="what"] { width: 420px; }
+.plist.two { display: grid; grid-template-columns: 1fr 1fr; }
+.mopt { width: 100%; min-height: 40px; padding: 0 10px; display: flex; align-items: center; gap: 10px; border: none; border-radius: 8px; background: none; text-align: left; font-size: 14px; color: var(--ink); }
+.mopt:hover { background: var(--soft); }
+.rbox, .cbox { flex: none; width: 18px; height: 18px; border: 1.5px solid var(--control); display: flex; align-items: center; justify-content: center; }
+.rbox { border-radius: 50%; }
+.cbox { border-radius: 4px; }
+.mopt[aria-checked="true"] .rbox { border: 5px solid var(--green); }
+.mopt[aria-checked="true"] .cbox { border-color: var(--green); background: var(--green); }
+.cbox svg { fill: none; stroke: #fff; stroke-width: 2.4; }
+.pop .fnote { margin: 4px 10px 6px; }
+.pop .fdates { margin: 6px 10px 8px; flex-wrap: wrap; }
+.phead { padding: 8px 10px 4px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.pgroup + .pgroup { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.pgroup .label { padding: 6px 10px 2px; }
+.pfoot { position: sticky; bottom: -6px; margin: 6px -6px -6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); background: #fff; }
+.pdone { height: 32px; padding: 0 16px; border: none; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; }
+.fextra { margin-top: 10px; gap: 6px; }
 /* The keyword box is deliberately small: the filters do the narrowing, a keyword only adds to them. */
-.kw { position: relative; display: flex; align-items: center; width: 168px; height: 32px; padding: 0 6px 0 10px; gap: 6px; border: 1px solid var(--control); border-radius: 999px; background: #fff; }
+.kw { position: relative; display: flex; align-items: center; width: 160px; height: 32px; padding: 0 6px 0 10px; gap: 6px; margin-left: auto; border: 1px solid var(--control); border-radius: 999px; background: #fff; }
 .kw:focus-within { border-color: var(--ink); }
 .kw svg { flex: none; fill: none; stroke: var(--muted); stroke-width: 1.6; }
 .kw input { flex: 1; min-width: 0; height: 30px; border: none; outline: none; background: transparent; font-size: 13px; color: var(--ink); }
@@ -295,16 +319,33 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
 .result-list.dim { opacity: .45; }
 .count { justify-content: space-between; }
 .linkish { border: none; background: none; padding: 0; font-size: 12px; color: var(--muted); text-decoration: underline; }
+@media (max-width: 1023px) {
+  .d-only { display: none; }
+  .m-only { display: inline-flex; }
+  .finder { padding: 9px 8px 10px; }
+  .fbar { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 8px; }
+  /* tighter pills; the row wraps to a second line rather than hiding one (Hide ongoing always shows) */
+  .pills { min-width: 0; flex-wrap: wrap; gap: 4px 3px; }
+  .pills .fpill { flex: none; padding: 0 6px 0 8px; gap: 2px; font-size: 12px; }
+  .pills .fpill.tog { padding: 0 8px; }
+  .pl { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kw { margin-left: 0; width: 150px; }
+  #f-more-m .fpill { padding: 0 8px 0 10px; font-size: 12px; }
+  .pop { left: 8px !important; right: 8px; width: auto !important; max-width: none; }
+}
 @media (max-width: 639px) {
-  /* one scrolling line per row on phones */
-  .fopts { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
-  .fopts::-webkit-scrollbar { display: none; }
-  .fopts .fopt { flex: none; }
-  .kw { width: 140px; }
+  .plist.two { grid-template-columns: 1fr; }
   /* iOS zooms into inputs under 16px; scale a 16px input down instead so the box stays small */
   .kw input { font-size: 16px; transform: scale(.8125); transform-origin: 0 50%; width: 123%; }
 }
-@media (min-width: 640px) {
-  .fline { flex-direction: row; align-items: flex-start; gap: 12px; }
-  .flabel { flex: none; width: 44px; padding-top: 9px; }
+@media (min-width: 1024px) {
+  /* room for every pill on one line beside the details pane */
+  .layout { max-width: 1440px; }
+  .layout.with-pane .main, .main { max-width: 900px; }
+  .pills { flex-wrap: nowrap; }
+  .pills { gap: 5px; }
+  /* keywords sit under the pills on the left, as on phones */
+  .fbar { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .fpill { padding: 0 9px 0 11px; }
+  .kw { width: 300px; margin-left: 0; }
 }

@@ -28,7 +28,7 @@ The page sends the picked filters (`browse: true`); no AI reads anything. Every 
 ongoing ones under "Also on". A keyword matches titles (English and original), venues, neighborhoods and descriptions;
 if the whole keyword matches nothing, any of its 4+-letter words will do, and if that fails too it's dropped with a note
 and the other filters still apply. The state lives in the URL (`?when=weekend&what=Music&kw=roma&price=free&time=evening
-&setting=indoor&kids=1&ongoing=hide`). Old `?q=` links are read with the keyword rules (no AI) and turned into filters.
+&setting=indoor&kids=1&ongoing=show`; ongoing events are hidden unless `ongoing=show`). Old `?q=` links are read with the keyword rules (no AI) and turned into filters.
 
 The sentence-reading path (OpenAI parser, embeddings, relaxation) is still in `lib/search.js` and `lib/parse.js` but the
 page no longer calls it; a request with `q` and no `filters` still uses it.
