@@ -172,8 +172,9 @@ test('clear time words override the AI: "this weekend" is Fri 18:00–Sun; a wee
   const opts = { tz: 'America/Mexico_City', now };
   const wrong = { from: '2026-11-11T22:00', to: '2026-11-15T23:59' };
   assert.deepEqual(enforceWhen(wrong, 'free jazz this weekend', opts), { from: '2026-11-13T18:00', to: '2026-11-15T23:59' });
-  const fri = { from: '2026-11-13T18:00', to: '2026-11-14T04:00' };
-  assert.deepEqual(enforceWhen(fri, 'something romantic friday night', opts), fri);
+  assert.deepEqual(enforceWhen({ from: '2026-11-13T00:00', to: '2026-11-13T23:59' }, 'something romantic friday night', opts), { from: '2026-11-13T18:00', to: '2026-11-14T04:00' });
+  const fri = { from: '2026-11-13T10:00', to: '2026-11-13T14:00' };
+  assert.deepEqual(enforceWhen(fri, 'brunch friday', opts), fri);
   assert.deepEqual(enforceWhen({ from: '2026-11-14T00:00', to: '2026-11-15T23:59' }, 'museum on sunday', opts), { from: '2026-11-15T00:00', to: '2026-11-15T23:59' });
   assert.deepEqual(enforceWhen({ from: 'a', to: 'b' }, 'jazz', opts), { from: 'a', to: 'b' });
 });
