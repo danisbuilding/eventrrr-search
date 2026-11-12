@@ -243,3 +243,29 @@ svg.i, .go svg, .clear svg { fill: none; stroke: currentColor; stroke-width: 1.6
 @media (prefers-reduced-motion: reduce) { .skel, .dots i { animation: none; } .loader { animation: none; opacity: 1; } }
 
 .test-badge { margin-left: 10px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--green); border: 1px solid var(--green); }
+
+/* Filters: one row under the search bar (renderFilters in app.js) */
+.frow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fpill { height: 32px; padding: 0 10px 0 12px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--control); background: #fff; border-radius: 999px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.fpill svg { fill: none; stroke: currentColor; stroke-width: 2; transition: transform .15s; }
+.fpill.open svg { transform: rotate(180deg); }
+.fpill[data-ftoggle] { padding-right: 12px; }
+.fpill.on { border-color: rgba(46,105,87,.45); background: rgba(46,105,87,.08); color: var(--green); font-weight: 500; }
+.fpill:hover { border-color: #c8cfd8; }
+.fmore { display: none; }
+.fpanel { margin-top: 8px; padding: 12px; border: 1px solid var(--control); border-radius: 12px; background: #fff; display: flex; flex-wrap: wrap; gap: 6px; }
+.fopt { height: 32px; padding: 0 12px; border: 1px solid var(--control); border-radius: 999px; background: #fff; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
+.fopt.on { border-color: var(--green); background: var(--green); color: #fff; }
+.fdates { display: flex; align-items: center; gap: 6px; flex-basis: 100%; margin-top: 4px; font-size: 13px; color: var(--muted); }
+.fdates input { height: 32px; border: 1px solid var(--control); border-radius: 8px; padding: 0 8px; font: inherit; font-size: 13px; }
+.fgroup { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fgroup + .fgroup { margin-top: 6px; }
+.fgroup .label { flex-basis: 100%; margin-bottom: 2px; }
+.fnote { flex-basis: 100%; margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+@media (max-width: 639px) {
+  .frow { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -20px; padding: 0 20px; }
+  .frow::-webkit-scrollbar { display: none; }
+  .frow .sec { display: none; }
+  .fmore { display: inline-flex; }
+  .frow .fchip { flex: none; }
+}

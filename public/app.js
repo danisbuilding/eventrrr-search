@@ -173,8 +173,8 @@ async function runSearch({ q, filters }) {
   $('#home').hidden = true;
   $('#results').hidden = false;
   $('#q-results').value = q || '';
-  state.showMore = false; state.ongoingOpen = false; state.selected = null;
-  $('#searching').innerHTML = '';
+  state.showMore = false; state.ongoingOpen = false; state.selected = null; state.openFilter = null;
+  if (!filters) $('#searching').innerHTML = ''; // a new question; re-filtering keeps the row in place
   setPane(false);
   window.scrollTo(0, 0);
   const stopLoader = startLoader();
@@ -234,15 +234,97 @@ function removeChip(field, value) {
   runSearch({ q: $('#q-results').value, filters: f });
 }
 
+// ---------------------------------------------------------------- filters
+// One row under the search bar: When and Theme always; Setting, Time of day, Kid-friendly and Hide ongoing inline on
+// wide screens and under "More" on phones. A typed question sets them too (the AI's reading shows as these filters).
+// Changing one re-runs the search without the AI: fast and free.
+const TIME_OPTS = [['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening'], ['late', 'Late night']];
+const ROW_FIELDS = new Set(['when', 'category', 'outdoor', 'indoor', 'times', 'kids', 'hide_ongoing', 'city']);
+function whenId(d) {
+  const f = d.filters || {};
+  const o = (d.when_options || []).find((x) => x.from === f.from && x.to === f.to);
+  return o ? o.id : 'custom';
+}
+function fpill(id, label, on, cls = '') {
+  const open = state.openFilter === id;
+  return `<button type="button" class="fpill${on ? ' on' : ''}${open ? ' open' : ''}${cls ? ' ' + cls : ''}" data-fpill="${id}" aria-expanded="${open}">${esc(label)}<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>`;
+}
+function ftoggle(field, label, on) {
+  return `<button type="button" class="fpill sec${on ? ' on' : ''}" data-ftoggle="${field}" aria-pressed="${!!on}">${esc(label)}</button>`;
+}
+function fopt(set, label, on) {
+  return `<button type="button" class="fopt${on ? ' on' : ''}" data-fset="${esc(set)}" aria-pressed="${!!on}">${esc(label)}</button>`;
+}
+function renderFilters() {
+  const d = state.data;
+  if (!d || !d.filters) { $('#searching').innerHTML = ''; return; }
+  const f = d.filters;
+  const wid = whenId(d);
+  const whenLabel = wid === 'any' ? 'Any time' : wid === 'custom' ? (d.when_label || 'Dates') : d.when_options.find((o) => o.id === wid).label;
+  const cats = f.categories || [];
+  const setting = f.outdoor ? 'Outdoors' : f.indoor ? 'Indoors' : '';
+  const times = f.times || [];
+  const timeLabel = times.map((t) => (TIME_OPTS.find((o) => o[0] === t) || [, t])[1]).join(', ');
+  const nMore = [setting, timeLabel, f.kids, f.hide_ongoing].filter(Boolean).length;
+  const extra = (d.chips || []).map((c, i) => [c, i]).filter(([c]) => !ROW_FIELDS.has(c.field));
+  let html = `<div class="frow" role="toolbar" aria-label="Filters">
+    ${fpill('when', whenLabel, wid !== 'any')}
+    ${fpill('theme', cats.length ? cats.join(', ') : 'Theme', cats.length > 0)}
+    ${fpill('setting', setting || 'Setting', !!setting, 'sec')}
+    ${fpill('time', timeLabel || 'Time of day', times.length > 0, 'sec')}
+    ${ftoggle('kids', 'Kid-friendly', f.kids)}
+    ${ftoggle('hide_ongoing', 'Hide ongoing', f.hide_ongoing)}
+    ${fpill('more', nMore ? `More · ${nMore}` : 'More', nMore > 0, 'fmore')}
+    ${extra.map(([c, i]) => `<span class="fchip">${esc(c.label)}<button type="button" data-chip="${i}" aria-label="Remove ${esc(c.label)}">${xIcon.replace('16', '10').replace('16', '10')}</button></span>`).join('')}
+  </div>`;
+  const o = state.openFilter;
+  if (o) {
+    let body = '';
+    const whenOpts = () => (d.when_options || []).map((x) => fopt(`when:${x.id}`, x.id === 'any' ? 'Any time' : x.label, wid === x.id)).join('')
+      + `<div class="fdates"><input type="date" id="fd-from" aria-label="From" value="${esc(f.from.slice(0, 10))}"><span>to</span><input type="date" id="fd-to" aria-label="To" value="${esc(f.to.slice(0, 10))}">${fopt('when:custom', 'Apply', wid === 'custom')}</div>`;
+    const settingOpts = () => fopt('setting:any', 'Any', !setting) + fopt('setting:outdoor', 'Outdoors', !!f.outdoor) + fopt('setting:indoor', 'Indoors', !!f.indoor);
+    const timeOpts = () => fopt('time:any', 'Any time of day', !times.length) + TIME_OPTS.map(([k, l]) => fopt(`time:${k}`, l, times.includes(k))).join('');
+    if (o === 'when') body = whenOpts();
+    else if (o === 'theme') body = fopt('theme:any', 'Any theme', !cats.length) + (d.categories || []).map((c) => fopt(`theme:${c}`, c, cats.includes(c))).join('');
+    else if (o === 'setting') body = settingOpts();
+    else if (o === 'time') body = timeOpts() + '<p class="fnote">Events without a start time are left out.</p>';
+    else if (o === 'more') body = `<div class="fgroup"><div class="label">Setting</div>${settingOpts()}</div>
+      <div class="fgroup"><div class="label">Time of day</div>${timeOpts()}</div>
+      <div class="fgroup"><div class="label">Show</div>${fopt('toggle:kids', 'Kid-friendly only', f.kids)}${fopt('toggle:hide_ongoing', 'Hide ongoing exhibitions', f.hide_ongoing)}</div>`;
+    html += `<div class="fpanel" data-panel="${o}">${body}</div>`;
+  }
+  $('#searching').innerHTML = html;
+}
+function applyFilters(patch) {
+  const f = { ...state.data.filters, ...patch };
+  state.openFilter = null;
+  runSearch({ q: $('#q-results').value, filters: f });
+}
+function onFilterSet(v) {
+  const [k, ...rest] = v.split(':');
+  const val = rest.join(':');
+  const f = state.data.filters;
+  if (k === 'when') {
+    if (val === 'custom') {
+      const a = $('#fd-from')?.value, b = $('#fd-to')?.value;
+      if (!a || !b) return;
+      return applyFilters({ from: `${a <= b ? a : b}T00:00`, to: `${a <= b ? b : a}T23:59` });
+    }
+    const o = (state.data.when_options || []).find((x) => x.id === val);
+    if (o) applyFilters({ from: o.from, to: o.to });
+  } else if (k === 'theme') {
+    const cats = f.categories || [];
+    applyFilters({ categories: val === 'any' ? [] : cats.includes(val) ? cats.filter((c) => c !== val) : [...cats, val], venue_types: [], activities: [] });
+  } else if (k === 'setting') applyFilters({ outdoor: val === 'outdoor', indoor: val === 'indoor' });
+  else if (k === 'time') {
+    const t = f.times || [];
+    applyFilters({ times: val === 'any' ? [] : t.includes(val) ? t.filter((x) => x !== val) : [...t, val] });
+  } else if (k === 'toggle') applyFilters({ [val]: !f[val] });
+}
+
 function renderResults() {
   const d = state.data;
-  const chips = d.chips || [];
-  $('#searching').innerHTML = chips.length ? `
-    <div class="label">Searching for</div>
-    <div class="filters">${chips.map((c, i) => c.fixed
-      ? `<span class="fchip fixed">${esc(c.label)}</span>`
-      : `<span class="fchip">${esc(c.label)}<button type="button" data-chip="${i}" aria-label="Remove ${esc(c.label)}">${xIcon.replace('16', '10').replace('16', '10')}</button></span>`).join('')}
-    </div>` : '';
+  renderFilters();
   const list = state.showMore ? [...d.results, ...d.more] : d.results;
   if (!list.length) {
     $('#result-list').innerHTML = `<div class="empty"><img src="/assets/tiger-avatar.webp" alt="" width="140" height="140"><p>Nothing found for that yet. Try fewer words, another day, or remove a filter above.</p></div>`;
@@ -501,6 +583,9 @@ document.addEventListener('click', async (ev) => {
   if (t.dataset.add) { onAdd(t.dataset.add); return; }
   if (t.dataset.link) { logAction('link', t.dataset.link); return; }
   if (t.dataset.chip) { const c = state.data.chips[+t.dataset.chip]; removeChip(c.field, c.value); return; }
+  if (t.dataset.fpill) { state.openFilter = state.openFilter === t.dataset.fpill ? null : t.dataset.fpill; renderFilters(); return; }
+  if (t.dataset.fset) { onFilterSet(t.dataset.fset); return; }
+  if (t.dataset.ftoggle) { applyFilters({ [t.dataset.ftoggle]: !state.data.filters[t.dataset.ftoggle] }); return; }
   if (t.hasAttribute('data-close')) { t.closest('dialog')?.close(); if (!t.closest('dialog')) setPane(false); return; }
   if (t.id === 'more-btn') { state.showMore = true; logAction('more', null); renderResults(); return; }
   if (t.id === 'ongoing-more') { state.ongoingOpen = true; renderResults(); return; }

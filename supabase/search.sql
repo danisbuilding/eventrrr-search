@@ -36,6 +36,7 @@ as $$ select lower(extensions.unaccent('extensions.unaccent'::regdictionary, coa
 -- search_events_v2 replaces search_events (kept in the database, unused, so nothing had to be dropped).
 -- params (all optional): city, from, to (ISO), text (names; fuzzy), categories[], profile, neighborhood, free, max_price,
 --   kids, outdoor, venue_types[], activities[] (event_tags, written nightly by eventrrr-scout scout/enrich.py),
+--   indoor, times[] (morning | afternoon | evening | late),
 --   embedding (512 floats for the question's topic), topic_min (minimum meaning similarity, 0–1; omit to rank only),
 --   limit.
 create or replace function search_events_v2(params jsonb default '{}'::jsonb)
@@ -73,6 +74,10 @@ with p as (
     case when jsonb_typeof(params->'embedding') = 'array' and jsonb_array_length(params->'embedding') = 512
          then (params->'embedding')::text::extensions.vector end                           as qvec,
     (params->>'topic_min')::real                                                           as topic_min,
+    coalesce((params->>'indoor')::boolean, false)                                          as indoor,
+    coalesce(array(select jsonb_array_elements_text(
+      case when jsonb_typeof(params->'times') = 'array' then params->'times' else '[]'::jsonb end)),
+      '{}')                                                                                as times,
     least(greatest(coalesce((params->>'limit')::int, 120), 1), 200)                        as lim
 ),
 scores as (
@@ -131,6 +136,17 @@ base as (
     and (cardinality(p.cats) = 0 or e.eventrrr_category = any (p.cats))
     and (not p.kids or t.kid_friendly)
     and (not p.outdoor or t.outdoor)
+    and (not p.indoor or t.outdoor is false)
+    -- time of day (local start): morning 05–11, afternoon 12–17, evening 18–21, late 22–04; untimed and
+    -- multi-day events have no time of day, so they drop out when one is picked
+    and (cardinality(p.times) = 0 or (
+      not (e.all_day and fl.time_found is null) and not e.is_ongoing
+      and coalesce(o.ends_at - o.starts_at, interval '0') <= interval '1 day'
+      and (case
+             when extract(hour from (case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end) at time zone e.timezone) between 5 and 11 then 'morning'
+             when extract(hour from (case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end) at time zone e.timezone) between 12 and 17 then 'afternoon'
+             when extract(hour from (case when e.all_day and fl.time_found is not null then fl.time_found else o.starts_at end) at time zone e.timezone) between 18 and 21 then 'evening'
+             else 'late' end) = any (p.times)))
     and (cardinality(p.vtypes) = 0 or t.venue_type = any (p.vtypes))
     and (cardinality(p.acts) = 0 or t.activity = any (p.acts))
     and (not p.free_only
